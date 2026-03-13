@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contared SF — Tasa BCV</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
+
+:root {
+  --bg:       #07090f;
+  --surf:     #0e1320;
+  --surf2:    #141b2d;
+  --surf3:    #1a2340;
+  --border:   #1e2d47;
+  --gold:     #f5c842;
+  --gold2:    #e8a800;
+  --blue:     #3b82f6;
+  --violet:   #a78bfa;
+  --green:    #22c55e;
+  --red:      #ef4444;
+  --orange:   #f97316;
+  --text:     #e2e8f0;
+  --dim:      #94a3b8;
+  --muted:    #475569;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:'Syne',sans-serif; min-height:100vh; }
+body::before {
+  content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(59,130,246,0.06) 0%, transparent 60%),
+              radial-gradient(ellipse 60% 40% at 80% 100%, rgba(167,139,250,0.04) 0%, transparent 60%);
+}
+.wrap { position:relative; z-index:1; max-width:1400px; margin:0 auto; padding:24px 28px 60px; }
+
+/* ── HEADER ─────────────────────────────── */
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:20px 28px; margin-bottom:28px;
+  background:var(--surf); border:1px solid var(--border); border-radius:16px;
+  gap:16px; flex-wrap:wrap;
+}
+.brand { display:flex; align-items:center; gap:16px; }
+.brand-logo {
+  width:42px; height:42px; border-radius:10px;
+  background:linear-gradient(135deg,var(--gold),var(--gold2));
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; font-weight:800; color:#0a0e1a; flex-shrink:0;
+}
+.brand-text { line-height:1.2; }
+.brand-name { font-size:11px; font-weight:600; letter-spacing:2px; text-transform:uppercase; color:var(--dim); }
+.brand-title { font-size:18px; font-weight:800; color:var(--text); }
+.brand-title span { color:var(--gold); }
+
+/* Fecha Valor editable */
+.fecha-valor-wrap {
+  display:flex; flex-direction:column; align-items:flex-end; gap:4px;
+}
+.fecha-label { font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); }
+.fecha-inputs {
+  display:flex; align-items:center; gap:6px;
+  background:var(--surf2); border:1px solid var(--border);
+  border-radius:10px; padding:8px 14px;
+  transition: border-color 0.2s;
+}
+.fecha-inputs:focus-within { border-color:var(--gold); }
+.fv-num {
+  background:transparent; border:none; outline:none;
+  font-family:'DM Mono',monospace; font-size:14px; font-weight:500;
+  color:var(--gold); text-align:center; width:36px;
+}
+.fv-num.year { width:52px; }
+.fv-sep { color:var(--muted); font-size:14px; font-weight:700; }
+/* Ocultar flechitas spinner en todos los navegadores */
+.fv-num::-webkit-outer-spin-button,
+.fv-num::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+.fv-num[type=number] { -moz-appearance:textfield; appearance:textfield; }
+.btn-fv {
+  background:var(--gold); color:#0a0e1a; border:none;
+  padding:6px 14px; border-radius:7px;
+  font-family:'Syne',sans-serif; font-weight:700; font-size:11px;
+  cursor:pointer; transition:all 0.2s; white-space:nowrap;
+  letter-spacing:0.5px;
+}
+.btn-fv:hover { background:var(--gold2); transform:translateY(-1px); }
+.fv-hint { font-size:10px; color:var(--muted); font-family:'DM Mono',monospace; }
+
+/* ── STATUS ─────────────────────────────── */
+.status-row {
+  display:flex; align-items:center; gap:8px;
+  padding:10px 16px; border-radius:8px; margin-bottom:24px;
+  background:var(--surf); border:1px solid var(--border);
+  font-size:12px; font-family:'DM Mono',monospace; color:var(--dim);
+}
+.sdot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.sdot.ok { background:var(--green); box-shadow:0 0 8px var(--green); animation:pulse 2s infinite; }
+.sdot.warn { background:var(--orange); }
+.sdot.err { background:var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* ── MAIN RATES ─────────────────────────── */
+.rates-row {
+  display:grid; grid-template-columns: 1fr 1fr 1fr;
+  gap:16px; margin-bottom:20px;
+}
+.rate-card {
+  background:var(--surf); border:1px solid var(--border);
+  border-radius:16px; padding:24px 28px; position:relative; overflow:hidden;
+  transition: border-color 0.3s, transform 0.2s;
+}
+.rate-card:hover { transform:translateY(-2px); }
+.rate-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:16px 16px 0 0;
+}
+.rate-card.usd::before { background:linear-gradient(90deg,var(--gold),var(--gold2)); }
+.rate-card.eur::before { background:linear-gradient(90deg,var(--violet),#7c3aed); }
+.rate-card.bin::before { background:linear-gradient(90deg,var(--orange),#dc2626); }
+.rate-card.usd { border-color:rgba(245,200,66,0.15); }
+.rate-card.eur { border-color:rgba(167,139,250,0.15); }
+.rate-card.bin { border-color:rgba(249,115,22,0.15); }
+.rc-label { font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); margin-bottom:8px; }
+.rc-rate {
+  font-family:'DM Mono',monospace; font-size:38px; font-weight:400;
+  line-height:1; margin-bottom:10px;
+}
+.rate-card.usd .rc-rate { color:var(--gold); }
+.rate-card.eur .rc-rate { color:var(--violet); }
+.rate-card.bin .rc-rate { color:var(--orange); }
+.rc-sub { font-size:11px; color:var(--muted); margin-bottom:12px; font-family:'DM Mono',monospace; }
+.rc-badges { display:flex; gap:6px; flex-wrap:wrap; }
+.badge {
+  font-size:11px; font-family:'DM Mono',monospace; padding:3px 10px;
+  border-radius:20px; background:var(--surf2); border:1px solid var(--border); color:var(--dim);
+}
+.badge.up { background:rgba(34,197,94,0.1); border-color:rgba(34,197,94,0.25); color:var(--green); }
+.badge.dn { background:rgba(239,68,68,0.1); border-color:rgba(239,68,68,0.25); color:var(--red); }
+
+/* ── STATS GRID ─────────────────────────── */
+.stats-section {
+  background:var(--surf); border:1px solid var(--border); border-radius:16px;
+  padding:24px 28px; margin-bottom:20px;
+}
+.section-title {
+  font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+  color:var(--dim); margin-bottom:20px; display:flex; align-items:center; gap:8px;
+}
+.section-title::after {
+  content:''; flex:1; height:1px; background:var(--border);
+}
+.stats-grid {
+  display:grid; grid-template-columns: repeat(3, 1fr);
+  gap:0; border:1px solid var(--border); border-radius:12px; overflow:hidden;
+}
+.stat-col { border-right:1px solid var(--border); }
+.stat-col:last-child { border-right:none; }
+.stat-col-header {
+  font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+  color:var(--dim); padding:12px 18px; background:var(--surf2);
+  border-bottom:1px solid var(--border);
+}
+.stat-row {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:11px 18px; border-bottom:1px solid rgba(30,45,71,0.5);
+  gap:12px;
+}
+.stat-row:last-child { border-bottom:none; }
+.stat-lbl { font-size:11px; color:var(--dim); font-family:'DM Mono',monospace; }
+.stat-val { font-size:13px; font-weight:600; font-family:'DM Mono',monospace; color:var(--text); white-space:nowrap; }
+.stat-val.gold { color:var(--gold); }
+.stat-val.green { color:var(--green); }
+.stat-val.violet { color:var(--violet); }
+.stat-val.orange { color:var(--orange); }
+
+/* ── INFLACION ──────────────────────────── */
+.inf-row {
+  display:grid; grid-template-columns:1fr 1fr 1fr;
+  gap:12px; margin-bottom:20px;
+}
+.inf-card {
+  background:var(--surf); border:1px solid var(--border); border-radius:12px;
+  padding:16px 20px; display:flex; flex-direction:column; gap:4px;
+}
+.inf-lbl { font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted); }
+.inf-val { font-size:24px; font-weight:400; font-family:'DM Mono',monospace; color:var(--orange); }
+.inf-src { font-size:10px; color:var(--muted); font-family:'DM Mono',monospace; }
+
+/* ── CHART ──────────────────────────────── */
+.chart-section {
+  background:var(--surf); border:1px solid var(--border); border-radius:16px;
+  padding:24px 28px; margin-bottom:20px;
+}
+.chart-toolbar {
+  display:flex; justify-content:space-between; align-items:center;
+  margin-bottom:20px; flex-wrap:wrap; gap:12px;
+}
+.period-btns { display:flex; gap:6px; }
+.pbtn {
+  background:transparent; border:1px solid var(--border); color:var(--dim);
+  padding:6px 14px; border-radius:6px; font-family:'DM Mono',monospace;
+  font-size:11px; cursor:pointer; transition:all 0.2s;
+}
+.pbtn:hover { border-color:var(--gold); color:var(--gold); }
+.pbtn.active { background:var(--gold); border-color:var(--gold); color:#0a0e1a; font-weight:700; }
+.series-toggles { display:flex; gap:8px; flex-wrap:wrap; }
+.stoggle {
+  display:flex; align-items:center; gap:6px; padding:5px 12px;
+  border-radius:20px; border:1px solid var(--border); cursor:pointer;
+  font-size:11px; font-family:'DM Mono',monospace; color:var(--dim);
+  transition:all 0.2s; user-select:none;
+}
+.stoggle.on.usd  { border-color:rgba(245,200,66,0.4); color:var(--gold); background:rgba(245,200,66,0.07); }
+.stoggle.on.eur  { border-color:rgba(167,139,250,0.4); color:var(--violet); background:rgba(167,139,250,0.07); }
+.stoggle.on.bin  { border-color:rgba(249,115,22,0.4); color:var(--orange); background:rgba(249,115,22,0.07); }
+.sdot-sm { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.chart-container { height:300px; position:relative; }
+
+/* ── TABLE ──────────────────────────────── */
+.table-section {
+  background:var(--surf); border:1px solid var(--border); border-radius:16px;
+  padding:24px 28px; margin-bottom:20px;
+}
+.table-wrap { overflow-x:auto; margin-top:4px; }
+table { width:100%; border-collapse:collapse; font-family:'DM Mono',monospace; font-size:12px; }
+th {
+  text-align:right; padding:10px 14px; border-bottom:1px solid var(--border);
+  font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+  color:var(--muted); white-space:nowrap;
+}
+th:first-child { text-align:left; }
+td { padding:9px 14px; border-bottom:1px solid rgba(30,45,71,0.4); text-align:right; color:var(--dim); }
+td:first-child { text-align:left; color:var(--text); }
+tr:hover td { background:var(--surf2); }
+tr.weekend td { opacity:0.5; }
+td.up { color:var(--red); } 
+td.dn { color:var(--green); }
+td.usd-val { color:var(--gold); font-weight:500; }
+td.eur-val { color:var(--violet); }
+td.bin-val { color:var(--orange); }
+
+/* ── WHATSAPP ────────────────────────────── */
+.wa-section {
+  background:var(--surf); border:1px solid var(--border); border-radius:16px;
+  padding:24px 28px;
+}
+.wa-msg {
+  background:var(--surf2); border:1px solid var(--border); border-radius:10px;
+  padding:16px; font-family:'DM Mono',monospace; font-size:12px;
+  color:var(--dim); line-height:1.7; white-space:pre-wrap; margin:12px 0;
+}
+.btn-copy {
+  background:var(--green); color:#0a0e1a; border:none;
+  padding:9px 20px; border-radius:8px; font-family:'Syne',sans-serif;
+  font-weight:700; font-size:12px; cursor:pointer; transition:all 0.2s;
+}
+.btn-copy:hover { background:#16a34a; }
+.toast {
+  position:fixed; bottom:28px; right:28px; z-index:9999;
+  background:var(--surf); border:1px solid var(--border); border-radius:10px;
+  padding:12px 20px; font-size:13px; font-family:'DM Mono',monospace;
+  color:var(--text); box-shadow:0 8px 32px rgba(0,0,0,0.4);
+  transform:translateY(80px); opacity:0; transition:all 0.3s ease;
+}
+.toast.show { transform:translateY(0); opacity:1; }
+
+/* ── MANUAL PANEL ───────────────────────── */
+.manual-section {
+  background:var(--surf); border:1px solid rgba(245,200,66,0.2);
+  border-radius:16px; padding:20px 28px; margin-bottom:20px;
+}
+.manual-form { display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; margin-top:12px; }
+.mf-group { display:flex; flex-direction:column; gap:5px; }
+.mf-label { font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--muted); }
+.mf-input {
+  background:var(--surf2); border:1px solid var(--border); border-radius:8px;
+  padding:9px 14px; font-family:'DM Mono',monospace; font-size:14px;
+  color:var(--text); outline:none; width:140px; transition:border-color 0.2s;
+}
+.mf-input:focus { border-color:var(--gold); }
+.btn-save {
+  background:var(--gold); color:#0a0e1a; border:none;
+  padding:10px 22px; border-radius:8px; font-family:'Syne',sans-serif;
+  font-weight:700; font-size:12px; cursor:pointer; transition:all 0.2s;
+}
+.btn-save:hover { background:var(--gold2); }
+
+@media(max-width:900px) {
+  .rates-row { grid-template-columns:1fr; }
+  .stats-grid { grid-template-columns:1fr; }
+  .inf-row { grid-template-columns:1fr; }
+}
+@media(max-width:600px) {
+  .wrap { padding:12px 14px 40px; }
+  header { padding:14px 16px; }
+  .rc-rate { font-size:28px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HEADER -->
+<header>
+  <div class="brand">
+    <div class="brand-logo">C</div>
+    <div class="brand-text">
+      <div class="brand-name">Contared Servicios Financieros</div>
+      <div class="brand-title">Tasa de Cambio <span>BCV</span></div>
+    </div>
+  </div>
+  <div class="fecha-valor-wrap">
+    <span class="fecha-label">📅 Fecha Valor</span>
+    <div class="fecha-inputs">
+      <input class="fv-num" id="fv-dd" type="text" maxlength="2" placeholder="DD" />
+      <span class="fv-sep">/</span>
+      <input class="fv-num" id="fv-mm" type="text" maxlength="2" placeholder="MM" />
+      <span class="fv-sep">/</span>
+      <input class="fv-num year" id="fv-yy" type="text" maxlength="4" placeholder="AAAA" />
+      <button class="btn-fv" onclick="consultarFechaValor()">Consultar</button>
+    </div>
+    <span class="fv-hint" id="fv-hint">Editá la fecha para consultar histórico</span>
+  </div>
+</header>
+
+<!-- STATUS -->
+<div class="status-row">
+  <div class="sdot ok" id="sdot"></div>
+  <span id="status-txt">Cargando datos...</span>
+</div>
+
+<!-- MAIN RATES -->
+<div class="rates-row">
+  <div class="rate-card usd">
+    <div class="rc-label">Dólar BCV — USD</div>
+    <div class="rc-rate" id="usd-rate">—</div>
+    <div class="rc-sub">Bs. por USD · Banco Central de Venezuela</div>
+    <div class="rc-badges">
+      <span class="badge" id="usd-b-dia">% día —</span>
+      <span class="badge" id="usd-b-ytd">% año —</span>
+      <span class="badge" id="usd-b-man">→ mañana —</span>
+    </div>
+  </div>
+  <div class="rate-card eur">
+    <div class="rc-label">Euro BCV — EUR</div>
+    <div class="rc-rate" id="eur-rate">—</div>
+    <div class="rc-sub">Bs. por EUR · Banco Central de Venezuela</div>
+    <div class="rc-badges">
+      <span class="badge" id="eur-b-dia">% día —</span>
+      <span class="badge" id="eur-b-rel">USD/EUR —</span>
+    </div>
+  </div>
+  <div class="rate-card bin">
+    <div class="rc-label">USDT Binance — Compra</div>
+    <div class="rc-rate" id="bin-rate">—</div>
+    <div class="rc-sub">Bs. por USDT · Binance P2P Compra</div>
+    <div class="rc-badges">
+      <span class="badge" id="bin-b-dia">% día —</span>
+      <span class="badge" id="bin-b-vs">vs BCV —</span>
+    </div>
+  </div>
+</div>
+
+<!-- STATS -->
+<div class="stats-section">
+  <div class="section-title">📊 Estadísticas y Proyecciones</div>
+  <div class="stats-grid">
+    <!-- Columna BCV USD -->
+    <div class="stat-col">
+      <div class="stat-col-header">💵 BCV Dólar</div>
+      <div class="stat-row"><span class="stat-lbl">Ayer</span><span class="stat-val gold" id="s-ayer-usd">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Hoy</span><span class="stat-val gold" id="s-hoy-usd">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">% Dev día</span><span class="stat-val" id="s-pct-dia">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">% Dev acum. año</span><span class="stat-val" id="s-pct-yr">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Prom. % 7 días</span><span class="stat-val" id="s-pct-7d">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Est. mañana</span><span class="stat-val green" id="s-est-man">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Est. fin de mes</span><span class="stat-val green" id="s-est-fm">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Prom. mes</span><span class="stat-val" id="s-prom-mes">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Al 31/12/2025</span><span class="stat-val" id="s-31dic">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Hace 12 meses</span><span class="stat-val" id="s-12m-usd">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Dev. acum. 12m</span><span class="stat-val orange" id="s-dev-12m">—</span></div>
+    </div>
+    <!-- Columna Binance -->
+    <div class="stat-col">
+      <div class="stat-col-header">🟠 Binance USDT</div>
+      <div class="stat-row"><span class="stat-lbl">Ayer</span><span class="stat-val orange" id="s-ayer-bin">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Hoy</span><span class="stat-val orange" id="s-hoy-bin">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">BCV/Binance</span><span class="stat-val" id="s-ratio-bin">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Dif % BCV/Bin.</span><span class="stat-val" id="s-dif-bin">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Prom. % 7 días</span><span class="stat-val" id="s-bin-7d">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Est. mañana</span><span class="stat-val green" id="s-bin-man">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Est. fin de mes</span><span class="stat-val green" id="s-bin-fm">—</span></div>
+    </div>
+    <!-- Columna EUR + Inflacion -->
+    <div class="stat-col">
+      <div class="stat-col-header">💶 Euro BCV</div>
+      <div class="stat-row"><span class="stat-lbl">Ayer</span><span class="stat-val violet" id="s-ayer-eur">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Hoy</span><span class="stat-val violet" id="s-hoy-eur">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Dif % USD/EUR</span><span class="stat-val" id="s-dif-eur">—</span></div>
+      <div class="stat-row" style="border-top:1px solid var(--border);margin-top:4px;padding-top:14px;">
+        <span class="stat-lbl" style="color:var(--orange)">🔥 Inflación</span>
+      </div>
+      <div class="stat-row"><span class="stat-lbl">Acum. año</span><span class="stat-val orange" id="s-inf-yr">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Mes anterior</span><span class="stat-val orange" id="s-inf-mes">—</span></div>
+      <div class="stat-row"><span class="stat-lbl">Acum. 12 meses</span><span class="stat-val orange" id="s-inf-12m">—</span></div>
+      <div class="stat-row"><span class="stat-lbl" style="font-size:9px;opacity:0.7">Fuente: BCV · Feb 2026</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- CHART -->
+<div class="chart-section">
+  <div class="chart-toolbar">
+    <div class="section-title" style="margin:0;flex:none">📈 Tendencia</div>
+    <div class="series-toggles">
+      <div class="stoggle on usd" id="t-usd" onclick="toggleSeries('usd')">
+        <div class="sdot-sm" style="background:var(--gold)"></div> USD BCV
+      </div>
+      <div class="stoggle on eur" id="t-eur" onclick="toggleSeries('eur')">
+        <div class="sdot-sm" style="background:var(--violet)"></div> EUR BCV
+      </div>
+      <div class="stoggle on bin" id="t-bin" onclick="toggleSeries('bin')">
+        <div class="sdot-sm" style="background:var(--orange)"></div> Binance
+      </div>
+    </div>
+    <div class="period-btns">
+      <button class="pbtn" onclick="setPeriod(30)">30d</button>
+      <button class="pbtn active" onclick="setPeriod(90)">90d</button>
+      <button class="pbtn" onclick="setPeriod(180)">6m</button>
+      <button class="pbtn" onclick="setPeriod(365)">1a</button>
+      <button class="pbtn" onclick="setPeriod(9999)">Todo</button>
+    </div>
+  </div>
+  <div class="chart-container"><canvas id="mainChart"></canvas></div>
+</div>
+
+<!-- TABLE -->
+<div class="table-section">
+  <div class="section-title">🗓 Últimos 30 días</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>USD BCV</th>
+          <th>% Día</th>
+          <th>EUR BCV</th>
+          <th>Binance</th>
+          <th>Dif % BCV/Bin</th>
+        </tr>
+      </thead>
+      <tbody id="tbl-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MANUAL -->
+<div class="manual-section">
+  <div class="section-title">✏️ Ingreso Manual</div>
+  <div class="manual-form">
+    <div class="mf-group">
+      <span class="mf-label">💵 USD BCV</span>
+      <input class="mf-input" id="m-usd" type="number" placeholder="438.2050" step="0.0001" />
+    </div>
+    <div class="mf-group">
+      <span class="mf-label">💶 EUR BCV</span>
+      <input class="mf-input" id="m-eur" type="number" placeholder="510.2108" step="0.0001" />
+    </div>
+    <div class="mf-group">
+      <span class="mf-label">🟠 Binance</span>
+      <input class="mf-input" id="m-bin" type="number" placeholder="620.9058" step="0.0001" />
+    </div>
+    <button class="btn-save" onclick="saveManual()">✓ Guardar</button>
+  </div>
+  <div style="font-size:10px;color:var(--muted);margin-top:10px;font-family:'DM Mono',monospace">
+    💡 Guarda la tasa para la <b style="color:var(--gold)">Fecha Valor</b> seleccionada arriba. Usa punto como decimal.
+  </div>
+</div>
+
+<!-- WA -->
+<div class="wa-section" style="margin-top:20px">
+  <div class="section-title">💬 Mensaje WhatsApp</div>
+  <div class="wa-msg" id="wa-msg">Generando...</div>
+  <button class="btn-copy" onclick="copyWA()">📋 Copiar mensaje</button>
+</div>
+
+</div><!-- /wrap -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════
+const HISTORICAL = [{"date":"2022-11-14","usd":9.29,"eur":null,"bin":null,"pct":0},{"date":"2022-11-15","usd":9.31,"eur":null,"bin":null,"pct":0.2153},{"date":"2022-11-16","usd":9.4293,"eur":null,"bin":null,"pct":1.2814},{"date":"2022-11-17","usd":9.56,"eur":null,"bin":null,"pct":1.3861},{"date":"2022-11-18","usd":9.7945,"eur":null,"bin":null,"pct":2.4529},{"date":"2022-11-19","usd":9.7945,"eur":null,"bin":null,"pct":0.0},{"date":"2022-11-20","usd":9.7945,"eur":null,"bin":null,"pct":0.0},{"date":"2022-11-21","usd":9.7945,"eur":null,"bin":null,"pct":0.0},{"date":"2022-11-22","usd":9.9787,"eur":null,"bin":null,"pct":1.8806},{"date":"2022-11-23","usd":9.9887,"eur":null,"bin":null,"pct":0.1002},{"date":"2022-11-24","usd":10.2346,"eur":null,"bin":null,"pct":2.4618},{"date":"2022-11-25","usd":10.4094,"eur":null,"bin":null,"pct":1.7079},{"date":"2022-11-28","usd":10.7256,"eur":null,"bin":null,"pct":3.0376},{"date":"2022-11-29","usd":10.8062,"eur":null,"bin":null,"pct":0.7515},{"date":"2022-11-30","usd":10.9545,"eur":null,"bin":null,"pct":1.3724},{"date":"2022-12-01","usd":11.0789,"eur":null,"bin":null,"pct":1.1356},{"date":"2022-12-02","usd":11.2548,"eur":null,"bin":null,"pct":1.5877},{"date":"2022-12-03","usd":11.2548,"eur":null,"bin":null,"pct":0.0},{"date":"2022-12-04","usd":11.2548,"eur":null,"bin":null,"pct":0.0},{"date":"2022-12-05","usd":11.6918,"eur":null,"bin":null,"pct":3.8828},{"date":"2022-12-06","usd":11.539,"eur":null,"bin":null,"pct":-1.3069},{"date":"2022-12-07","usd":11.8608,"eur":null,"bin":null,"pct":2.7888},{"date":"2022-12-08","usd":12.6615,"eur":null,"bin":null,"pct":6.7508},{"date":"2022-12-09","usd":13.5966,"eur":null,"bin":null,"pct":7.3854},{"date":"2022-12-10","usd":13.5966,"eur":null,"bin":null,"pct":0.0},{"date":"2022-12-11","usd":13.5966,"eur":null,"bin":null,"pct":0.0},{"date":"2022-12-12","usd":13.5966,"eur":null,"bin":null,"pct":0.0},{"date":"2022-12-13","usd":14.1251,"eur":null,"bin":null,"pct":3.887},{"date":"2022-12-14","usd":14.7646,"eur":null,"bin":null,"pct":4.5274},{"date":"2022-12-15","usd":15.2354,"eur":null,"bin":null,"pct":3.1887},{"date":"2022-12-16","usd":15.5716,"eur":null,"bin":null,"pct":2.2067},{"date":"2022-12-17","usd":15.5716,"eur":null,"bin":null,"pct":0.0},{"date":"2022-12-18","usd":15.5716,"eur":null,"bin":null,"pct":0.0},{"date":"2022-12-19","usd":15.7668,"eur":null,"bin":null,"pct":1.2536},{"date":"2022-12-20","usd":16.0006,"eur":null,"bin":null,"pct":1.4829},{"date":"2022-12-21","usd":16.0408,"eur":null,"bin":null,"pct":0.2512},{"date":"2022-12-22","usd":16.1777,"eur":null,"bin":null,"pct":0.8534},{"date":"2022-12-23","usd":16.4523,"eur":null,"bin":null,"pct":1.6974},{"date":"2022-12-24","usd":16.4523,"eur":null,"bin":null,"pct":0.0},{"date":"2022-12-25","usd":16.4523,"eur":null,"bin":null,"pct":0.0},{"date":"2022-12-26","usd":16.5663,"eur":null,"bin":null,"pct":0.6929},{"date":"2022-12-27","usd":16.5666,"eur":null,"bin":null,"pct":0.0018},{"date":"2022-12-28","usd":16.8028,"eur":null,"bin":null,"pct":1.4258},{"date":"2022-12-29","usd":17.1172,"eur":null,"bin":null,"pct":1.8711},{"date":"2022-12-30","usd":17.2787,"eur":null,"bin":null,"pct":0.9435},{"date":"2022-12-31","usd":17.2787,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-01","usd":17.2787,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-02","usd":17.489,"eur":null,"bin":null,"pct":1.2171},{"date":"2023-01-03","usd":17.5591,"eur":null,"bin":null,"pct":0.4008},{"date":"2023-01-04","usd":17.8643,"eur":null,"bin":null,"pct":1.7381},{"date":"2023-01-05","usd":17.9442,"eur":null,"bin":null,"pct":0.4473},{"date":"2023-01-06","usd":18.3946,"eur":null,"bin":null,"pct":2.51},{"date":"2023-01-07","usd":18.3946,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-08","usd":18.3946,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-09","usd":18.3946,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-10","usd":18.6138,"eur":null,"bin":null,"pct":1.1917},{"date":"2023-01-11","usd":18.8092,"eur":null,"bin":null,"pct":1.0498},{"date":"2023-01-12","usd":19.0531,"eur":null,"bin":null,"pct":1.2967},{"date":"2023-01-13","usd":19.2784,"eur":null,"bin":null,"pct":1.1825},{"date":"2023-01-14","usd":19.2784,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-15","usd":19.2784,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-16","usd":19.452,"eur":null,"bin":null,"pct":0.9005},{"date":"2023-01-17","usd":19.6638,"eur":null,"bin":null,"pct":1.0888},{"date":"2023-01-18","usd":19.9725,"eur":null,"bin":null,"pct":1.5699},{"date":"2023-01-19","usd":19.9845,"eur":null,"bin":null,"pct":0.0601},{"date":"2023-01-20","usd":20.2948,"eur":null,"bin":null,"pct":1.5527},{"date":"2023-01-21","usd":20.2948,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-22","usd":20.2948,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-23","usd":20.5272,"eur":null,"bin":null,"pct":1.1451},{"date":"2023-01-24","usd":20.734,"eur":null,"bin":null,"pct":1.0074},{"date":"2023-01-25","usd":21.1744,"eur":null,"bin":null,"pct":2.124},{"date":"2023-01-26","usd":21.3189,"eur":null,"bin":null,"pct":0.6824},{"date":"2023-01-27","usd":21.7271,"eur":null,"bin":null,"pct":1.9147},{"date":"2023-01-28","usd":21.7271,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-29","usd":21.7271,"eur":null,"bin":null,"pct":0.0},{"date":"2023-01-30","usd":21.9689,"eur":null,"bin":null,"pct":1.1129},{"date":"2023-01-31","usd":21.9512,"eur":null,"bin":null,"pct":-0.0806},{"date":"2023-02-01","usd":22.3737,"eur":null,"bin":null,"pct":1.9247},{"date":"2023-02-02","usd":22.4381,"eur":null,"bin":null,"pct":0.2878},{"date":"2023-02-03","usd":22.6808,"eur":null,"bin":null,"pct":1.0816},{"date":"2023-02-04","usd":22.6808,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-05","usd":22.6808,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-06","usd":22.9062,"eur":null,"bin":null,"pct":0.9938},{"date":"2023-02-07","usd":23.1487,"eur":null,"bin":null,"pct":1.0587},{"date":"2023-02-08","usd":23.6127,"eur":null,"bin":null,"pct":2.0044},{"date":"2023-02-09","usd":23.8095,"eur":null,"bin":null,"pct":0.8334},{"date":"2023-02-10","usd":24.1985,"eur":null,"bin":null,"pct":1.6338},{"date":"2023-02-11","usd":24.2,"eur":null,"bin":null,"pct":0.0062},{"date":"2023-02-12","usd":24.2,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-13","usd":24.2,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-14","usd":24.2531,"eur":null,"bin":null,"pct":0.2194},{"date":"2023-02-15","usd":24.3431,"eur":null,"bin":null,"pct":0.3711},{"date":"2023-02-16","usd":24.3652,"eur":null,"bin":null,"pct":0.0908},{"date":"2023-02-17","usd":24.3874,"eur":null,"bin":null,"pct":0.0911},{"date":"2023-02-18","usd":24.3874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-19","usd":24.3874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-20","usd":24.3874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-21","usd":24.3874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-22","usd":24.4014,"eur":null,"bin":null,"pct":0.0574},{"date":"2023-02-23","usd":24.3914,"eur":null,"bin":null,"pct":-0.041},{"date":"2023-02-24","usd":24.3708,"eur":null,"bin":null,"pct":-0.0845},{"date":"2023-02-25","usd":24.4163,"eur":null,"bin":null,"pct":0.1867},{"date":"2023-02-26","usd":24.4163,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-27","usd":24.4163,"eur":null,"bin":null,"pct":0.0},{"date":"2023-02-28","usd":24.3635,"eur":null,"bin":null,"pct":-0.2162},{"date":"2023-03-01","usd":24.3609,"eur":null,"bin":null,"pct":-0.0107},{"date":"2023-03-02","usd":24.3571,"eur":null,"bin":null,"pct":-0.0156},{"date":"2023-03-03","usd":24.357,"eur":null,"bin":null,"pct":-0.0004},{"date":"2023-03-04","usd":24.357,"eur":null,"bin":null,"pct":0.0},{"date":"2023-03-05","usd":24.357,"eur":null,"bin":null,"pct":0.0},{"date":"2023-03-06","usd":24.3168,"eur":null,"bin":null,"pct":-0.165},{"date":"2023-03-07","usd":24.274,"eur":null,"bin":null,"pct":-0.176},{"date":"2023-03-08","usd":24.1557,"eur":null,"bin":null,"pct":-0.4874},{"date":"2023-03-09","usd":24.1694,"eur":null,"bin":null,"pct":0.0567},{"date":"2023-03-10","usd":24.135,"eur":null,"bin":null,"pct":-0.1423},{"date":"2023-03-11","usd":24.1459,"eur":null,"bin":null,"pct":0.0452},{"date":"2023-03-12","usd":24.1459,"eur":null,"bin":null,"pct":0.0},{"date":"2023-03-13","usd":24.1459,"eur":null,"bin":null,"pct":0.0},{"date":"2023-03-14","usd":24.1182,"eur":null,"bin":null,"pct":-0.1147},{"date":"2023-03-15","usd":24.0003,"eur":null,"bin":null,"pct":-0.4888},{"date":"2023-03-16","usd":24.0677,"eur":null,"bin":null,"pct":0.2808},{"date":"2023-03-17","usd":24.1258,"eur":null,"bin":null,"pct":0.2414},{"date":"2023-03-18","usd":24.1258,"eur":null,"bin":null,"pct":0.0},{"date":"2023-03-19","usd":24.1258,"eur":null,"bin":null,"pct":0.0},{"date":"2023-03-20","usd":24.2,"eur":null,"bin":null,"pct":0.3076},{"date":"2023-03-21","usd":24.2197,"eur":null,"bin":null,"pct":0.0814},{"date":"2023-03-22","usd":24.2415,"eur":null,"bin":null,"pct":0.09},{"date":"2023-03-23","usd":24.2039,"eur":null,"bin":null,"pct":-0.1551},{"date":"2023-03-24","usd":24.3093,"eur":null,"bin":null,"pct":0.4355},{"date":"2023-03-25","usd":24.3093,"eur":null,"bin":null,"pct":0.0},{"date":"2023-03-26","usd":24.3093,"eur":null,"bin":null,"pct":0.0},{"date":"2023-03-27","usd":24.4016,"eur":null,"bin":null,"pct":0.3797},{"date":"2023-03-28","usd":24.3917,"eur":null,"bin":null,"pct":-0.0406},{"date":"2023-03-29","usd":24.4151,"eur":null,"bin":null,"pct":0.0959},{"date":"2023-03-30","usd":24.4874,"eur":null,"bin":null,"pct":0.2961},{"date":"2023-03-31","usd":24.4874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-01","usd":24.4874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-02","usd":24.4874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-03","usd":24.5256,"eur":null,"bin":null,"pct":0.156},{"date":"2023-04-04","usd":24.4897,"eur":null,"bin":null,"pct":-0.1464},{"date":"2023-04-05","usd":24.4414,"eur":null,"bin":null,"pct":-0.1972},{"date":"2023-04-06","usd":24.4414,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-07","usd":24.4414,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-08","usd":24.4414,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-09","usd":24.4414,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-10","usd":24.4879,"eur":null,"bin":null,"pct":0.1903},{"date":"2023-04-11","usd":24.3921,"eur":null,"bin":null,"pct":-0.3912},{"date":"2023-04-12","usd":24.4734,"eur":null,"bin":null,"pct":0.3333},{"date":"2023-04-13","usd":24.4879,"eur":null,"bin":null,"pct":0.0592},{"date":"2023-04-14","usd":24.5419,"eur":null,"bin":null,"pct":0.2205},{"date":"2023-04-15","usd":24.5419,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-16","usd":24.5419,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-17","usd":24.5739,"eur":null,"bin":null,"pct":0.1304},{"date":"2023-04-18","usd":24.5612,"eur":null,"bin":null,"pct":-0.0517},{"date":"2023-04-19","usd":24.5612,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-20","usd":24.5633,"eur":null,"bin":null,"pct":0.0086},{"date":"2023-04-21","usd":24.5766,"eur":null,"bin":null,"pct":0.0541},{"date":"2023-04-22","usd":24.5766,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-23","usd":24.5766,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-24","usd":24.6484,"eur":null,"bin":null,"pct":0.2921},{"date":"2023-04-25","usd":24.6147,"eur":null,"bin":null,"pct":-0.1367},{"date":"2023-04-26","usd":24.6533,"eur":null,"bin":null,"pct":0.1568},{"date":"2023-04-27","usd":24.632,"eur":null,"bin":null,"pct":-0.0864},{"date":"2023-04-28","usd":24.7304,"eur":null,"bin":null,"pct":0.3995},{"date":"2023-04-29","usd":24.7304,"eur":null,"bin":null,"pct":0.0},{"date":"2023-04-30","usd":24.7304,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-01","usd":24.7304,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-02","usd":24.7503,"eur":null,"bin":null,"pct":0.0805},{"date":"2023-05-03","usd":24.8156,"eur":null,"bin":null,"pct":0.2638},{"date":"2023-05-04","usd":24.8725,"eur":null,"bin":null,"pct":0.2293},{"date":"2023-05-05","usd":25.0299,"eur":null,"bin":null,"pct":0.6328},{"date":"2023-05-06","usd":25.0299,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-07","usd":25.0299,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-08","usd":25.0577,"eur":null,"bin":null,"pct":0.1111},{"date":"2023-05-09","usd":25.0395,"eur":null,"bin":null,"pct":-0.0726},{"date":"2023-05-10","usd":25.1236,"eur":null,"bin":null,"pct":0.3359},{"date":"2023-05-11","usd":25.1791,"eur":null,"bin":null,"pct":0.2209},{"date":"2023-05-12","usd":25.3484,"eur":null,"bin":null,"pct":0.6724},{"date":"2023-05-13","usd":25.3484,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-14","usd":25.3484,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-15","usd":25.435,"eur":null,"bin":null,"pct":0.3416},{"date":"2023-05-16","usd":25.4891,"eur":null,"bin":null,"pct":0.2127},{"date":"2023-05-17","usd":25.6479,"eur":null,"bin":null,"pct":0.623},{"date":"2023-05-18","usd":25.8122,"eur":null,"bin":null,"pct":0.6406},{"date":"2023-05-19","usd":25.9029,"eur":null,"bin":null,"pct":0.3514},{"date":"2023-05-20","usd":25.9029,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-21","usd":25.9029,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-22","usd":26.0055,"eur":null,"bin":null,"pct":0.3961},{"date":"2023-05-23","usd":26.0055,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-24","usd":26.0022,"eur":null,"bin":null,"pct":-0.0127},{"date":"2023-05-25","usd":26.037,"eur":null,"bin":null,"pct":0.1338},{"date":"2023-05-26","usd":26.1295,"eur":null,"bin":null,"pct":0.3553},{"date":"2023-05-27","usd":26.1295,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-28","usd":26.1295,"eur":null,"bin":null,"pct":0.0},{"date":"2023-05-29","usd":26.2714,"eur":null,"bin":null,"pct":0.5431},{"date":"2023-05-30","usd":26.2548,"eur":null,"bin":null,"pct":-0.0632},{"date":"2023-05-31","usd":26.1639,"eur":null,"bin":null,"pct":-0.3462},{"date":"2023-06-01","usd":26.267,"eur":null,"bin":null,"pct":0.3941},{"date":"2023-06-02","usd":26.4672,"eur":null,"bin":null,"pct":0.7622},{"date":"2023-06-03","usd":26.4672,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-04","usd":26.4672,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-05","usd":26.5963,"eur":null,"bin":null,"pct":0.4878},{"date":"2023-06-06","usd":26.4625,"eur":null,"bin":null,"pct":-0.5031},{"date":"2023-06-07","usd":26.6329,"eur":null,"bin":null,"pct":0.6439},{"date":"2023-06-08","usd":26.7038,"eur":null,"bin":null,"pct":0.2662},{"date":"2023-06-09","usd":26.8571,"eur":null,"bin":null,"pct":0.5741},{"date":"2023-06-10","usd":26.8571,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-11","usd":26.8571,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-12","usd":26.8571,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-13","usd":27.021,"eur":null,"bin":null,"pct":0.6103},{"date":"2023-06-14","usd":27.018,"eur":null,"bin":null,"pct":-0.0111},{"date":"2023-06-15","usd":27.1053,"eur":null,"bin":null,"pct":0.3231},{"date":"2023-06-16","usd":27.1737,"eur":null,"bin":null,"pct":0.2523},{"date":"2023-06-17","usd":27.1737,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-18","usd":27.1737,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-19","usd":27.1737,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-20","usd":27.278,"eur":null,"bin":null,"pct":0.3838},{"date":"2023-06-21","usd":27.2543,"eur":null,"bin":null,"pct":-0.0869},{"date":"2023-06-22","usd":27.3,"eur":null,"bin":null,"pct":0.1677},{"date":"2023-06-23","usd":27.542,"eur":null,"bin":null,"pct":0.8864},{"date":"2023-06-24","usd":27.542,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-25","usd":27.542,"eur":null,"bin":null,"pct":0.0},{"date":"2023-06-26","usd":27.6096,"eur":null,"bin":null,"pct":0.2454},{"date":"2023-06-27","usd":27.6169,"eur":null,"bin":null,"pct":0.0264},{"date":"2023-06-28","usd":27.7156,"eur":null,"bin":null,"pct":0.3574},{"date":"2023-06-29","usd":27.8374,"eur":null,"bin":null,"pct":0.4395},{"date":"2023-06-30","usd":27.8546,"eur":null,"bin":null,"pct":0.0618},{"date":"2023-07-01","usd":27.8546,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-02","usd":27.8546,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-03","usd":27.8546,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-04","usd":28.0162,"eur":null,"bin":null,"pct":0.5802},{"date":"2023-07-05","usd":28.0162,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-06","usd":28.1648,"eur":null,"bin":null,"pct":0.5304},{"date":"2023-07-07","usd":28.2768,"eur":null,"bin":null,"pct":0.3977},{"date":"2023-07-08","usd":28.2768,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-09","usd":28.2768,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-10","usd":28.3048,"eur":null,"bin":null,"pct":0.099},{"date":"2023-07-11","usd":28.2066,"eur":null,"bin":null,"pct":-0.3469},{"date":"2023-07-12","usd":28.3568,"eur":null,"bin":null,"pct":0.5325},{"date":"2023-07-13","usd":28.3529,"eur":null,"bin":null,"pct":-0.0138},{"date":"2023-07-14","usd":28.4556,"eur":null,"bin":null,"pct":0.3622},{"date":"2023-07-15","usd":28.4556,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-16","usd":28.4556,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-17","usd":28.6099,"eur":null,"bin":null,"pct":0.5422},{"date":"2023-07-18","usd":28.6695,"eur":null,"bin":null,"pct":0.2083},{"date":"2023-07-19","usd":28.8123,"eur":null,"bin":null,"pct":0.4981},{"date":"2023-07-20","usd":28.8789,"eur":null,"bin":null,"pct":0.2312},{"date":"2023-07-21","usd":28.9906,"eur":null,"bin":null,"pct":0.3868},{"date":"2023-07-22","usd":28.9906,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-23","usd":28.9906,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-24","usd":28.9906,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-25","usd":29.0872,"eur":null,"bin":null,"pct":0.3332},{"date":"2023-07-26","usd":29.1042,"eur":null,"bin":null,"pct":0.0584},{"date":"2023-07-27","usd":29.314,"eur":null,"bin":null,"pct":0.7209},{"date":"2023-07-28","usd":29.3052,"eur":null,"bin":null,"pct":-0.03},{"date":"2023-07-29","usd":29.3052,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-30","usd":29.3052,"eur":null,"bin":null,"pct":0.0},{"date":"2023-07-31","usd":29.512,"eur":null,"bin":null,"pct":0.7057},{"date":"2023-08-01","usd":29.5037,"eur":null,"bin":null,"pct":-0.0281},{"date":"2023-08-02","usd":29.6153,"eur":null,"bin":null,"pct":0.3783},{"date":"2023-08-03","usd":29.7559,"eur":null,"bin":null,"pct":0.4748},{"date":"2023-08-04","usd":30.1042,"eur":null,"bin":null,"pct":1.1705},{"date":"2023-08-05","usd":30.1042,"eur":null,"bin":null,"pct":0.0},{"date":"2023-08-06","usd":30.1042,"eur":null,"bin":null,"pct":0.0},{"date":"2023-08-07","usd":30.9826,"eur":null,"bin":null,"pct":2.9179},{"date":"2023-08-08","usd":30.9685,"eur":null,"bin":null,"pct":-0.0455},{"date":"2023-08-09","usd":31.0989,"eur":null,"bin":null,"pct":0.4211},{"date":"2023-08-10","usd":31.2376,"eur":null,"bin":null,"pct":0.446},{"date":"2023-08-11","usd":31.3554,"eur":null,"bin":null,"pct":0.3771},{"date":"2023-08-12","usd":31.3554,"eur":null,"bin":null,"pct":0.0},{"date":"2023-08-13","usd":31.3554,"eur":null,"bin":null,"pct":0.0},{"date":"2023-08-14","usd":31.5251,"eur":null,"bin":null,"pct":0.5412},{"date":"2023-08-15","usd":31.5251,"eur":null,"bin":null,"pct":0.0},{"date":"2023-08-16","usd":31.5098,"eur":null,"bin":null,"pct":-0.0485},{"date":"2023-08-17","usd":31.6117,"eur":null,"bin":null,"pct":0.3234},{"date":"2023-08-18","usd":31.7535,"eur":null,"bin":null,"pct":0.4486},{"date":"2023-08-19","usd":31.7535,"eur":null,"bin":null,"pct":0.0},{"date":"2023-08-20","usd":31.7535,"eur":null,"bin":null,"pct":0.0},{"date":"2023-08-21","usd":31.8473,"eur":null,"bin":null,"pct":0.2954},{"date":"2023-08-22","usd":31.8337,"eur":null,"bin":null,"pct":-0.0427},{"date":"2023-08-23","usd":32.0079,"eur":null,"bin":null,"pct":0.5472},{"date":"2023-08-24","usd":32.1785,"eur":null,"bin":null,"pct":0.533},{"date":"2023-08-25","usd":32.2956,"eur":null,"bin":null,"pct":0.3639},{"date":"2023-08-26","usd":32.2956,"eur":null,"bin":null,"pct":0.0},{"date":"2023-08-27","usd":32.2956,"eur":null,"bin":null,"pct":0.0},{"date":"2023-08-28","usd":32.3445,"eur":null,"bin":null,"pct":0.1514},{"date":"2023-08-29","usd":32.4371,"eur":null,"bin":null,"pct":0.2863},{"date":"2023-08-30","usd":32.4284,"eur":null,"bin":null,"pct":-0.0268},{"date":"2023-08-31","usd":32.5079,"eur":null,"bin":null,"pct":0.2452},{"date":"2023-09-01","usd":32.5984,"eur":null,"bin":null,"pct":0.2784},{"date":"2023-09-02","usd":32.5984,"eur":null,"bin":null,"pct":0.0},{"date":"2023-09-03","usd":32.5984,"eur":null,"bin":null,"pct":0.0},{"date":"2023-09-04","usd":32.8151,"eur":null,"bin":null,"pct":0.6648},{"date":"2023-09-05","usd":32.7921,"eur":null,"bin":null,"pct":-0.0701},{"date":"2023-09-06","usd":32.9394,"eur":null,"bin":null,"pct":0.4492},{"date":"2023-09-07","usd":33.1115,"eur":null,"bin":null,"pct":0.5225},{"date":"2023-09-08","usd":33.2157,"eur":null,"bin":null,"pct":0.3147},{"date":"2023-09-09","usd":33.2157,"eur":null,"bin":null,"pct":0.0},{"date":"2023-09-10","usd":33.2157,"eur":null,"bin":null,"pct":0.0},{"date":"2023-09-11","usd":33.2157,"eur":null,"bin":null,"pct":0.0},{"date":"2023-09-12","usd":33.3401,"eur":null,"bin":null,"pct":0.3745},{"date":"2023-09-13","usd":33.3371,"eur":null,"bin":null,"pct":-0.009},{"date":"2023-09-14","usd":33.4402,"eur":null,"bin":null,"pct":0.3093},{"date":"2023-09-15","usd":33.5078,"eur":null,"bin":null,"pct":0.2022},{"date":"2023-09-16","usd":33.5078,"eur":null,"bin":null,"pct":0.0},{"date":"2023-09-17","usd":33.5078,"eur":null,"bin":null,"pct":0.0},{"date":"2023-09-18","usd":33.6607,"eur":null,"bin":null,"pct":0.4563},{"date":"2023-09-19","usd":33.6681,"eur":null,"bin":null,"pct":0.022},{"date":"2023-09-20","usd":33.8161,"eur":null,"bin":null,"pct":0.4396},{"date":"2023-09-21","usd":33.8333,"eur":null,"bin":null,"pct":0.0509},{"date":"2023-09-22","usd":33.9289,"eur":null,"bin":null,"pct":0.2826},{"date":"2023-09-23","usd":33.9289,"eur":null,"bin":null,"pct":0.0},{"date":"2023-09-24","usd":33.9289,"eur":null,"bin":null,"pct":0.0},{"date":"2023-09-25","usd":33.9912,"eur":null,"bin":null,"pct":0.1836},{"date":"2023-09-26","usd":34.0233,"eur":null,"bin":null,"pct":0.0944},{"date":"2023-09-27","usd":34.0933,"eur":null,"bin":null,"pct":0.2057},{"date":"2023-09-28","usd":34.2507,"eur":null,"bin":null,"pct":0.4617},{"date":"2023-09-29","usd":34.3009,"eur":null,"bin":null,"pct":0.1466},{"date":"2023-09-30","usd":34.3009,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-01","usd":34.3009,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-02","usd":34.4254,"eur":null,"bin":null,"pct":0.363},{"date":"2023-10-03","usd":34.4681,"eur":null,"bin":null,"pct":0.124},{"date":"2023-10-04","usd":34.669,"eur":null,"bin":null,"pct":0.5829},{"date":"2023-10-05","usd":34.7133,"eur":null,"bin":null,"pct":0.1278},{"date":"2023-10-06","usd":34.7499,"eur":null,"bin":null,"pct":0.1054},{"date":"2023-10-07","usd":34.7499,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-08","usd":34.7499,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-09","usd":34.8565,"eur":null,"bin":null,"pct":0.3068},{"date":"2023-10-10","usd":34.8199,"eur":null,"bin":null,"pct":-0.105},{"date":"2023-10-11","usd":34.8416,"eur":null,"bin":null,"pct":0.0623},{"date":"2023-10-12","usd":34.8416,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-13","usd":34.9001,"eur":null,"bin":null,"pct":0.1679},{"date":"2023-10-14","usd":34.9001,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-15","usd":34.9001,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-16","usd":34.8776,"eur":null,"bin":null,"pct":-0.0645},{"date":"2023-10-17","usd":34.8508,"eur":null,"bin":null,"pct":-0.0768},{"date":"2023-10-18","usd":34.8126,"eur":null,"bin":null,"pct":-0.1096},{"date":"2023-10-19","usd":34.8602,"eur":null,"bin":null,"pct":0.1367},{"date":"2023-10-20","usd":34.8584,"eur":null,"bin":null,"pct":-0.0052},{"date":"2023-10-21","usd":34.8584,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-22","usd":34.8584,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-23","usd":34.9779,"eur":null,"bin":null,"pct":0.3428},{"date":"2023-10-24","usd":34.976,"eur":null,"bin":null,"pct":-0.0054},{"date":"2023-10-25","usd":35.0278,"eur":null,"bin":null,"pct":0.1481},{"date":"2023-10-26","usd":35.0222,"eur":null,"bin":null,"pct":-0.016},{"date":"2023-10-27","usd":35.0919,"eur":null,"bin":null,"pct":0.199},{"date":"2023-10-28","usd":35.0919,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-29","usd":35.0919,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-30","usd":35.0919,"eur":null,"bin":null,"pct":0.0},{"date":"2023-10-31","usd":35.1276,"eur":null,"bin":null,"pct":0.1017},{"date":"2023-11-01","usd":35.0653,"eur":null,"bin":null,"pct":-0.1774},{"date":"2023-11-02","usd":35.1535,"eur":null,"bin":null,"pct":0.2515},{"date":"2023-11-03","usd":35.1724,"eur":null,"bin":null,"pct":0.0538},{"date":"2023-11-04","usd":35.1724,"eur":null,"bin":null,"pct":0.0},{"date":"2023-11-05","usd":35.1724,"eur":null,"bin":null,"pct":0.0},{"date":"2023-11-06","usd":35.1724,"eur":null,"bin":null,"pct":0.0},{"date":"2023-11-07","usd":35.236,"eur":null,"bin":null,"pct":0.1808},{"date":"2023-11-08","usd":35.1541,"eur":null,"bin":null,"pct":-0.2324},{"date":"2023-11-09","usd":35.2458,"eur":null,"bin":null,"pct":0.2609},{"date":"2023-11-10","usd":35.3342,"eur":null,"bin":null,"pct":0.2508},{"date":"2023-11-11","usd":35.3342,"eur":null,"bin":null,"pct":0.0},{"date":"2023-11-12","usd":35.3342,"eur":null,"bin":null,"pct":0.0},{"date":"2023-11-13","usd":35.3706,"eur":null,"bin":null,"pct":0.103},{"date":"2023-11-14","usd":35.3148,"eur":null,"bin":null,"pct":-0.1578},{"date":"2023-11-15","usd":35.3819,"eur":null,"bin":null,"pct":0.19},{"date":"2023-11-16","usd":35.4108,"eur":null,"bin":null,"pct":0.0817},{"date":"2023-11-17","usd":35.4298,"eur":null,"bin":null,"pct":0.0537},{"date":"2023-11-18","usd":35.4298,"eur":null,"bin":null,"pct":0.0},{"date":"2023-11-19","usd":35.4298,"eur":null,"bin":null,"pct":0.0},{"date":"2023-11-20","usd":35.478,"eur":null,"bin":null,"pct":0.136},{"date":"2023-11-21","usd":35.4511,"eur":null,"bin":null,"pct":-0.0758},{"date":"2023-11-22","usd":35.4186,"eur":null,"bin":null,"pct":-0.0917},{"date":"2023-11-23","usd":35.3916,"eur":null,"bin":null,"pct":-0.0762},{"date":"2023-11-24","usd":35.4854,"eur":null,"bin":null,"pct":0.265},{"date":"2023-11-25","usd":35.4854,"eur":null,"bin":null,"pct":0.0},{"date":"2023-11-26","usd":35.4854,"eur":null,"bin":null,"pct":0.0},{"date":"2023-11-27","usd":35.5021,"eur":null,"bin":null,"pct":0.0471},{"date":"2023-11-28","usd":35.4708,"eur":null,"bin":null,"pct":-0.0882},{"date":"2023-11-29","usd":35.4784,"eur":null,"bin":null,"pct":0.0214},{"date":"2023-11-30","usd":35.4939,"eur":null,"bin":null,"pct":0.0437},{"date":"2023-12-01","usd":35.5131,"eur":null,"bin":null,"pct":0.0541},{"date":"2023-12-02","usd":35.5131,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-03","usd":35.5131,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-04","usd":35.5806,"eur":null,"bin":null,"pct":0.1901},{"date":"2023-12-05","usd":35.5228,"eur":null,"bin":null,"pct":-0.1624},{"date":"2023-12-06","usd":35.5578,"eur":null,"bin":null,"pct":0.0985},{"date":"2023-12-07","usd":35.5974,"eur":null,"bin":null,"pct":0.1114},{"date":"2023-12-08","usd":35.6018,"eur":null,"bin":null,"pct":0.0124},{"date":"2023-12-09","usd":35.6018,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-10","usd":35.6018,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-11","usd":35.6018,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-12","usd":35.6248,"eur":null,"bin":null,"pct":0.0646},{"date":"2023-12-13","usd":35.5724,"eur":null,"bin":null,"pct":-0.1471},{"date":"2023-12-14","usd":35.6262,"eur":null,"bin":null,"pct":0.1512},{"date":"2023-12-15","usd":35.6403,"eur":null,"bin":null,"pct":0.0396},{"date":"2023-12-16","usd":35.6403,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-17","usd":35.6403,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-18","usd":35.7247,"eur":null,"bin":null,"pct":0.2368},{"date":"2023-12-19","usd":35.654,"eur":null,"bin":null,"pct":-0.1979},{"date":"2023-12-20","usd":35.7156,"eur":null,"bin":null,"pct":0.1728},{"date":"2023-12-21","usd":35.732,"eur":null,"bin":null,"pct":0.0459},{"date":"2023-12-22","usd":35.7874,"eur":null,"bin":null,"pct":0.155},{"date":"2023-12-23","usd":35.7874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-24","usd":35.7874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-25","usd":35.7874,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-26","usd":35.8134,"eur":null,"bin":null,"pct":0.0727},{"date":"2023-12-27","usd":35.7827,"eur":null,"bin":null,"pct":-0.0857},{"date":"2023-12-28","usd":35.8348,"eur":null,"bin":null,"pct":0.1456},{"date":"2023-12-29","usd":35.9305,"eur":null,"bin":null,"pct":0.2671},{"date":"2023-12-30","usd":35.9305,"eur":null,"bin":null,"pct":0.0},{"date":"2023-12-31","usd":35.9305,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-01","usd":35.9305,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-02","usd":35.9593,"eur":null,"bin":null,"pct":0.0802},{"date":"2024-01-03","usd":35.867,"eur":null,"bin":null,"pct":-0.2567},{"date":"2024-01-04","usd":35.9496,"eur":null,"bin":null,"pct":0.2303},{"date":"2024-01-05","usd":36.0345,"eur":null,"bin":null,"pct":0.2362},{"date":"2024-01-06","usd":36.0345,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-07","usd":36.0345,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-08","usd":36.0065,"eur":null,"bin":null,"pct":-0.0777},{"date":"2024-01-09","usd":35.9385,"eur":null,"bin":null,"pct":-0.1889},{"date":"2024-01-10","usd":35.9171,"eur":null,"bin":null,"pct":-0.0595},{"date":"2024-01-11","usd":35.9437,"eur":null,"bin":null,"pct":0.0741},{"date":"2024-01-12","usd":35.9629,"eur":null,"bin":null,"pct":0.0534},{"date":"2024-01-13","usd":35.9629,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-14","usd":35.9629,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-15","usd":36.0397,"eur":null,"bin":null,"pct":0.2136},{"date":"2024-01-16","usd":36.9744,"eur":null,"bin":null,"pct":2.5935},{"date":"2024-01-17","usd":36.0466,"eur":null,"bin":null,"pct":-2.5093},{"date":"2024-01-18","usd":36.0761,"eur":null,"bin":null,"pct":0.0818},{"date":"2024-01-19","usd":36.1379,"eur":null,"bin":null,"pct":0.1713},{"date":"2024-01-20","usd":36.1379,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-21","usd":36.1379,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-22","usd":36.1459,"eur":null,"bin":null,"pct":0.0221},{"date":"2024-01-23","usd":36.1104,"eur":null,"bin":null,"pct":-0.0982},{"date":"2024-01-24","usd":36.1279,"eur":null,"bin":null,"pct":0.0485},{"date":"2024-01-25","usd":36.1187,"eur":null,"bin":null,"pct":-0.0255},{"date":"2024-01-26","usd":36.7786,"eur":null,"bin":null,"pct":1.827},{"date":"2024-01-27","usd":36.7786,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-28","usd":36.7786,"eur":null,"bin":null,"pct":0.0},{"date":"2024-01-29","usd":36.202,"eur":null,"bin":null,"pct":-1.5678},{"date":"2024-01-30","usd":36.1418,"eur":null,"bin":null,"pct":-0.1663},{"date":"2024-01-31","usd":36.2032,"eur":null,"bin":null,"pct":0.1699},{"date":"2024-02-01","usd":36.2601,"eur":null,"bin":null,"pct":0.1572},{"date":"2024-02-02","usd":36.2352,"eur":null,"bin":null,"pct":-0.0687},{"date":"2024-02-03","usd":36.2352,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-04","usd":36.2352,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-05","usd":36.2859,"eur":null,"bin":null,"pct":0.1399},{"date":"2024-02-06","usd":36.2539,"eur":null,"bin":null,"pct":-0.0882},{"date":"2024-02-07","usd":36.2556,"eur":null,"bin":null,"pct":0.0047},{"date":"2024-02-08","usd":36.2375,"eur":null,"bin":null,"pct":-0.0499},{"date":"2024-02-09","usd":36.2919,"eur":null,"bin":null,"pct":0.1501},{"date":"2024-02-10","usd":36.2919,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-11","usd":36.2919,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-12","usd":36.2919,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-13","usd":36.2919,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-14","usd":36.3185,"eur":null,"bin":null,"pct":0.0733},{"date":"2024-02-15","usd":36.2609,"eur":null,"bin":null,"pct":-0.1586},{"date":"2024-02-16","usd":36.2737,"eur":null,"bin":null,"pct":0.0353},{"date":"2024-02-17","usd":36.2737,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-18","usd":36.2737,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-19","usd":36.3358,"eur":null,"bin":null,"pct":0.1712},{"date":"2024-02-20","usd":36.2375,"eur":null,"bin":null,"pct":-0.2705},{"date":"2024-02-21","usd":36.2951,"eur":null,"bin":null,"pct":0.159},{"date":"2024-02-22","usd":36.2315,"eur":null,"bin":null,"pct":-0.1752},{"date":"2024-02-23","usd":36.2329,"eur":null,"bin":null,"pct":0.0039},{"date":"2024-02-24","usd":36.2329,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-25","usd":36.2329,"eur":null,"bin":null,"pct":0.0},{"date":"2024-02-26","usd":36.0698,"eur":null,"bin":null,"pct":-0.4501},{"date":"2024-02-27","usd":36.0706,"eur":null,"bin":null,"pct":0.0022},{"date":"2024-02-28","usd":36.0955,"eur":null,"bin":null,"pct":0.069},{"date":"2024-02-29","usd":36.1304,"eur":null,"bin":null,"pct":0.0967},{"date":"2024-03-01","usd":36.1518,"eur":null,"bin":null,"pct":0.0592},{"date":"2024-03-02","usd":36.1518,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-03","usd":36.1518,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-04","usd":36.0801,"eur":null,"bin":null,"pct":-0.1983},{"date":"2024-03-05","usd":36.0933,"eur":null,"bin":null,"pct":0.0366},{"date":"2024-03-06","usd":36.1318,"eur":null,"bin":null,"pct":0.1067},{"date":"2024-03-07","usd":36.1726,"eur":null,"bin":null,"pct":0.1129},{"date":"2024-03-08","usd":36.1331,"eur":null,"bin":null,"pct":-0.1092},{"date":"2024-03-09","usd":36.1331,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-10","usd":36.1331,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-11","usd":36.1903,"eur":null,"bin":null,"pct":0.1583},{"date":"2024-03-12","usd":36.2005,"eur":null,"bin":null,"pct":0.0282},{"date":"2024-03-13","usd":36.2368,"eur":null,"bin":null,"pct":0.1003},{"date":"2024-03-14","usd":36.2633,"eur":null,"bin":null,"pct":0.0731},{"date":"2024-03-15","usd":36.276,"eur":null,"bin":null,"pct":0.035},{"date":"2024-03-16","usd":36.276,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-17","usd":36.276,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-18","usd":36.3167,"eur":null,"bin":null,"pct":0.1122},{"date":"2024-03-19","usd":36.3167,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-20","usd":36.2653,"eur":null,"bin":null,"pct":-0.1415},{"date":"2024-03-21","usd":36.2861,"eur":null,"bin":null,"pct":0.0574},{"date":"2024-03-22","usd":36.3217,"eur":null,"bin":null,"pct":0.0981},{"date":"2024-03-23","usd":36.3217,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-24","usd":36.3217,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-25","usd":36.3555,"eur":null,"bin":null,"pct":0.0931},{"date":"2024-03-26","usd":36.3006,"eur":null,"bin":null,"pct":-0.151},{"date":"2024-03-27","usd":36.334,"eur":null,"bin":null,"pct":0.092},{"date":"2024-03-28","usd":36.334,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-29","usd":36.334,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-30","usd":36.334,"eur":null,"bin":null,"pct":0.0},{"date":"2024-03-31","usd":36.334,"eur":null,"bin":null,"pct":0.0},{"date":"2024-04-01","usd":36.2896,"eur":null,"bin":null,"pct":-0.1222},{"date":"2024-04-02","usd":36.2611,"eur":null,"bin":null,"pct":-0.0785},{"date":"2024-04-03","usd":36.286,"eur":39.076,"bin":null,"pct":0.0687},{"date":"2024-04-04","usd":36.2493,"eur":null,"bin":null,"pct":-0.1011},{"date":"2024-04-05","usd":36.2105,"eur":null,"bin":null,"pct":-0.107},{"date":"2024-04-06","usd":36.2105,"eur":null,"bin":null,"pct":0.0},{"date":"2024-04-07","usd":36.2105,"eur":null,"bin":null,"pct":0.0},{"date":"2024-04-08","usd":36.2274,"eur":null,"bin":null,"pct":0.0467},{"date":"2024-04-09","usd":36.1809,"eur":39.2762,"bin":null,"pct":-0.1284},{"date":"2024-04-10","usd":36.2251,"eur":39.3252,"bin":null,"pct":0.1222},{"date":"2024-04-11","usd":36.1883,"eur":38.8916,"bin":null,"pct":-0.1016},{"date":"2024-04-12","usd":36.2804,"eur":38.8476,"bin":null,"pct":0.2545},{"date":"2024-04-13","usd":36.2804,"eur":38.8476,"bin":null,"pct":0.0},{"date":"2024-04-14","usd":36.2804,"eur":38.8476,"bin":null,"pct":0.0},{"date":"2024-04-15","usd":36.2947,"eur":38.5842,"bin":null,"pct":0.0394},{"date":"2024-04-16","usd":36.2889,"eur":38.5878,"bin":null,"pct":-0.016},{"date":"2024-04-17","usd":36.2974,"eur":38.6052,"bin":null,"pct":0.0234},{"date":"2024-04-18","usd":36.3265,"eur":38.6558,"bin":null,"pct":0.0802},{"date":"2024-04-19","usd":36.3265,"eur":38.6558,"bin":null,"pct":0.0},{"date":"2024-04-20","usd":36.3265,"eur":38.6558,"bin":null,"pct":0.0},{"date":"2024-04-21","usd":36.3265,"eur":38.6558,"bin":null,"pct":0.0},{"date":"2024-04-22","usd":36.3421,"eur":38.7516,"bin":null,"pct":0.0429},{"date":"2024-04-23","usd":36.3506,"eur":38.6912,"bin":null,"pct":0.0234},{"date":"2024-04-24","usd":36.3877,"eur":38.9247,"bin":null,"pct":0.1021},{"date":"2024-04-25","usd":36.4231,"eur":38.9337,"bin":null,"pct":0.0973},{"date":"2024-04-26","usd":36.4311,"eur":39.029,"bin":null,"pct":0.022},{"date":"2024-04-27","usd":36.4311,"eur":39.029,"bin":null,"pct":0.0},{"date":"2024-04-28","usd":36.4311,"eur":39.029,"bin":null,"pct":0.0},{"date":"2024-04-29","usd":36.4324,"eur":38.9229,"bin":null,"pct":0.0036},{"date":"2024-04-30","usd":36.4262,"eur":null,"bin":null,"pct":-0.017},{"date":"2024-05-01","usd":36.4262,"eur":null,"bin":null,"pct":0.0},{"date":"2024-05-02","usd":36.473,"eur":38.9991,"bin":null,"pct":0.1285},{"date":"2024-05-03","usd":36.5099,"eur":39.055,"bin":null,"pct":0.1012},{"date":"2024-05-04","usd":36.5099,"eur":39.055,"bin":null,"pct":0.0},{"date":"2024-05-05","usd":36.5099,"eur":39.055,"bin":null,"pct":0.0},{"date":"2024-05-06","usd":36.5849,"eur":39.4023,"bin":null,"pct":0.2054},{"date":"2024-05-07","usd":36.5763,"eur":null,"bin":null,"pct":-0.0235},{"date":"2024-05-08","usd":36.5621,"eur":39.4107,"bin":null,"pct":-0.0388},{"date":"2024-05-09","usd":36.5828,"eur":null,"bin":null,"pct":0.0566},{"date":"2024-05-10","usd":36.5865,"eur":39.4263,"bin":null,"pct":0.0101},{"date":"2024-05-11","usd":36.5865,"eur":39.4263,"bin":null,"pct":0.0},{"date":"2024-05-12","usd":36.5865,"eur":39.4263,"bin":null,"pct":0.0},{"date":"2024-05-13","usd":36.5865,"eur":39.4263,"bin":null,"pct":0.0},{"date":"2024-05-14","usd":36.6101,"eur":39.4265,"bin":null,"pct":0.0645},{"date":"2024-05-15","usd":36.5949,"eur":39.5906,"bin":null,"pct":-0.0415},{"date":"2024-05-16","usd":36.6042,"eur":39.7745,"bin":null,"pct":0.0254},{"date":"2024-05-17","usd":36.6265,"eur":null,"bin":null,"pct":0.0609},{"date":"2024-05-18","usd":36.6265,"eur":null,"bin":null,"pct":0.0},{"date":"2024-05-19","usd":36.6265,"eur":null,"bin":null,"pct":0.0},{"date":"2024-05-20","usd":36.5717,"eur":39.7578,"bin":null,"pct":-0.1496},{"date":"2024-05-21","usd":36.5703,"eur":39.7442,"bin":null,"pct":-0.0038},{"date":"2024-05-22","usd":36.5589,"eur":39.7055,"bin":null,"pct":-0.0312},{"date":"2024-05-23","usd":36.5464,"eur":39.6101,"bin":null,"pct":-0.0342},{"date":"2024-05-24","usd":36.5219,"eur":39.543,"bin":null,"pct":-0.067},{"date":"2024-05-25","usd":36.5219,"eur":39.543,"bin":null,"pct":0.0},{"date":"2024-05-26","usd":36.5219,"eur":39.543,"bin":null,"pct":0.0},{"date":"2024-05-27","usd":36.5129,"eur":39.6209,"bin":null,"pct":-0.0246},{"date":"2024-05-28","usd":36.5119,"eur":39.6454,"bin":null,"pct":-0.0027},{"date":"2024-05-29","usd":36.5103,"eur":39.7028,"bin":null,"pct":-0.0044},{"date":"2024-05-30","usd":36.5114,"eur":null,"bin":null,"pct":0.003},{"date":"2024-05-31","usd":36.5372,"eur":39.6114,"bin":null,"pct":0.0707},{"date":"2024-06-01","usd":36.5372,"eur":39.6114,"bin":null,"pct":0.0},{"date":"2024-06-02","usd":36.5372,"eur":39.6114,"bin":null,"pct":0.0},{"date":"2024-06-03","usd":36.5372,"eur":39.6114,"bin":null,"pct":0.0},{"date":"2024-06-04","usd":36.5344,"eur":39.6332,"bin":null,"pct":-0.0077},{"date":"2024-06-05","usd":36.5408,"eur":39.7531,"bin":null,"pct":0.0175},{"date":"2024-06-06","usd":36.524,"eur":39.7009,"bin":null,"pct":-0.046},{"date":"2024-06-07","usd":36.4882,"eur":39.6835,"bin":null,"pct":-0.098},{"date":"2024-06-08","usd":36.4882,"eur":39.6835,"bin":null,"pct":0.0},{"date":"2024-06-09","usd":36.4882,"eur":39.6835,"bin":null,"pct":0.0},{"date":"2024-06-10","usd":36.4787,"eur":39.4251,"bin":null,"pct":-0.026},{"date":"2024-06-11","usd":36.45,"eur":39.1305,"bin":null,"pct":-0.0787},{"date":"2024-06-12","usd":36.4385,"eur":39.0825,"bin":null,"pct":-0.0316},{"date":"2024-06-13","usd":36.4497,"eur":39.5545,"bin":null,"pct":0.0307},{"date":"2024-06-14","usd":36.4296,"eur":39.2227,"bin":null,"pct":-0.0551},{"date":"2024-06-15","usd":36.4296,"eur":39.2227,"bin":null,"pct":0.0},{"date":"2024-06-16","usd":36.4296,"eur":39.2227,"bin":null,"pct":0.0},{"date":"2024-06-17","usd":36.4296,"eur":39.2227,"bin":null,"pct":0.0},{"date":"2024-06-18","usd":36.4176,"eur":38.9541,"bin":null,"pct":-0.0329},{"date":"2024-06-19","usd":36.3939,"eur":39.0867,"bin":null,"pct":-0.0651},{"date":"2024-06-20","usd":36.3831,"eur":39.0936,"bin":null,"pct":-0.0297},{"date":"2024-06-21","usd":36.3789,"eur":null,"bin":null,"pct":-0.0115},{"date":"2024-06-22","usd":36.3789,"eur":null,"bin":null,"pct":0.0},{"date":"2024-06-23","usd":36.3789,"eur":null,"bin":null,"pct":0.0},{"date":"2024-06-24","usd":36.3789,"eur":null,"bin":null,"pct":0.0},{"date":"2024-06-25","usd":36.3725,"eur":38.8709,"bin":null,"pct":-0.0176},{"date":"2024-06-26","usd":36.3655,"eur":38.938,"bin":null,"pct":-0.0192},{"date":"2024-06-27","usd":36.3823,"eur":38.9101,"bin":null,"pct":0.0462},{"date":"2024-06-28","usd":36.4085,"eur":39.0175,"bin":null,"pct":0.072},{"date":"2024-06-29","usd":36.4085,"eur":39.0175,"bin":null,"pct":0.0},{"date":"2024-06-30","usd":36.4085,"eur":39.0175,"bin":null,"pct":0.0},{"date":"2024-07-01","usd":36.4462,"eur":39.0404,"bin":null,"pct":0.1035},{"date":"2024-07-02","usd":36.4551,"eur":39.0879,"bin":null,"pct":0.0244},{"date":"2024-07-03","usd":36.4672,"eur":39.1559,"bin":null,"pct":0.0332},{"date":"2024-07-04","usd":36.4779,"eur":39.4184,"bin":null,"pct":0.0293},{"date":"2024-07-05","usd":36.4779,"eur":39.4184,"bin":null,"pct":0.0},{"date":"2024-07-06","usd":36.4779,"eur":39.4184,"bin":null,"pct":0.0},{"date":"2024-07-07","usd":36.4779,"eur":39.4184,"bin":null,"pct":0.0},{"date":"2024-07-08","usd":36.5123,"eur":39.4837,"bin":null,"pct":0.0943},{"date":"2024-07-09","usd":36.4888,"eur":null,"bin":null,"pct":-0.0644},{"date":"2024-07-10","usd":36.5056,"eur":39.4899,"bin":null,"pct":0.046},{"date":"2024-07-11","usd":36.5134,"eur":39.5232,"bin":null,"pct":0.0214},{"date":"2024-07-12","usd":36.5303,"eur":39.7062,"bin":null,"pct":0.0463},{"date":"2024-07-13","usd":36.5303,"eur":39.7062,"bin":null,"pct":0.0},{"date":"2024-07-14","usd":36.5303,"eur":39.7062,"bin":null,"pct":0.0},{"date":"2024-07-15","usd":36.5243,"eur":39.8385,"bin":null,"pct":-0.0164},{"date":"2024-07-16","usd":36.5004,"eur":39.8588,"bin":null,"pct":-0.0654},{"date":"2024-07-17","usd":36.506,"eur":39.7251,"bin":null,"pct":0.0153},{"date":"2024-07-18","usd":36.5407,"eur":39.9605,"bin":null,"pct":0.0951},{"date":"2024-07-19","usd":36.5724,"eur":39.9016,"bin":null,"pct":0.0868},{"date":"2024-07-20","usd":36.5724,"eur":39.9016,"bin":null,"pct":0.0},{"date":"2024-07-21","usd":36.5724,"eur":39.9016,"bin":null,"pct":0.0},{"date":"2024-07-22","usd":36.6066,"eur":39.8562,"bin":null,"pct":0.0935},{"date":"2024-07-23","usd":36.5314,"eur":39.7582,"bin":null,"pct":-0.2054},{"date":"2024-07-24","usd":36.5314,"eur":39.7582,"bin":null,"pct":0.0},{"date":"2024-07-25","usd":36.559,"eur":39.7582,"bin":null,"pct":0.0756},{"date":"2024-07-26","usd":36.5797,"eur":39.7204,"bin":null,"pct":0.0566},{"date":"2024-07-27","usd":36.5797,"eur":39.7204,"bin":null,"pct":0.0},{"date":"2024-07-28","usd":36.5797,"eur":39.7204,"bin":null,"pct":0.0},{"date":"2024-07-29","usd":36.6074,"eur":39.7461,"bin":null,"pct":0.0757},{"date":"2024-07-30","usd":36.609,"eur":39.6234,"bin":null,"pct":0.0044},{"date":"2024-07-31","usd":36.6128,"eur":39.5543,"bin":null,"pct":0.0104},{"date":"2024-08-01","usd":36.6368,"eur":39.6579,"bin":null,"pct":0.0656},{"date":"2024-08-02","usd":36.6423,"eur":39.5268,"bin":null,"pct":0.015},{"date":"2024-08-03","usd":36.6423,"eur":39.5268,"bin":null,"pct":0.0},{"date":"2024-08-04","usd":36.6423,"eur":39.5268,"bin":null,"pct":0.0},{"date":"2024-08-05","usd":36.6555,"eur":40.0256,"bin":null,"pct":0.036},{"date":"2024-08-06","usd":36.6527,"eur":40.2117,"bin":null,"pct":-0.0076},{"date":"2024-08-07","usd":36.6642,"eur":40.078,"bin":null,"pct":0.0314},{"date":"2024-08-08","usd":36.6806,"eur":40.111,"bin":null,"pct":0.0447},{"date":"2024-08-09","usd":36.6827,"eur":39.983,"bin":null,"pct":0.0057},{"date":"2024-08-10","usd":36.6827,"eur":39.983,"bin":null,"pct":0.0},{"date":"2024-08-11","usd":36.6827,"eur":39.983,"bin":null,"pct":0.0},{"date":"2024-08-12","usd":36.6658,"eur":40.0537,"bin":null,"pct":-0.0461},{"date":"2024-08-13","usd":36.6305,"eur":40.0544,"bin":null,"pct":-0.0963},{"date":"2024-08-14","usd":36.6561,"eur":40.1586,"bin":null,"pct":0.0699},{"date":"2024-08-15","usd":36.6132,"eur":40.3704,"bin":null,"pct":-0.117},{"date":"2024-08-16","usd":36.6768,"eur":40.2931,"bin":null,"pct":0.1737},{"date":"2024-08-17","usd":36.6768,"eur":40.2931,"bin":null,"pct":0.0},{"date":"2024-08-18","usd":36.6768,"eur":40.2931,"bin":null,"pct":0.0},{"date":"2024-08-19","usd":36.6768,"eur":40.2931,"bin":null,"pct":0.0},{"date":"2024-08-20","usd":36.6848,"eur":40.3313,"bin":null,"pct":0.0218},{"date":"2024-08-21","usd":36.683,"eur":40.7346,"bin":null,"pct":-0.0049},{"date":"2024-08-22","usd":36.6484,"eur":40.7805,"bin":null,"pct":-0.0943},{"date":"2024-08-23","usd":36.6967,"eur":40.7671,"bin":null,"pct":0.1318},{"date":"2024-08-24","usd":36.6967,"eur":40.7671,"bin":null,"pct":0.0},{"date":"2024-08-25","usd":36.6967,"eur":40.7671,"bin":null,"pct":0.0},{"date":"2024-08-26","usd":36.5888,"eur":40.948,"bin":null,"pct":-0.294},{"date":"2024-08-27","usd":36.5633,"eur":40.8383,"bin":null,"pct":-0.0697},{"date":"2024-08-28","usd":36.5883,"eur":40.8563,"bin":null,"pct":0.0684},{"date":"2024-08-29","usd":36.5919,"eur":40.7458,"bin":null,"pct":0.0098},{"date":"2024-08-30","usd":36.6259,"eur":40.55,"bin":null,"pct":0.0929},{"date":"2024-08-31","usd":36.6259,"eur":40.55,"bin":null,"pct":0.0},{"date":"2024-09-01","usd":36.6259,"eur":40.55,"bin":null,"pct":0.0},{"date":"2024-09-02","usd":36.6454,"eur":40.5654,"bin":null,"pct":0.0532},{"date":"2024-09-03","usd":36.6386,"eur":40.5432,"bin":null,"pct":-0.0186},{"date":"2024-09-04","usd":36.6391,"eur":40.4573,"bin":null,"pct":0.0014},{"date":"2024-09-05","usd":36.6436,"eur":40.6011,"bin":null,"pct":0.0123},{"date":"2024-09-06","usd":36.6846,"eur":40.6513,"bin":null,"pct":0.1119},{"date":"2024-09-07","usd":36.6846,"eur":40.6513,"bin":null,"pct":0.0},{"date":"2024-09-08","usd":36.6846,"eur":40.6513,"bin":null,"pct":0.0},{"date":"2024-09-09","usd":36.6958,"eur":40.7584,"bin":null,"pct":0.0305},{"date":"2024-09-10","usd":36.6854,"eur":40.4981,"bin":null,"pct":-0.0283},{"date":"2024-09-11","usd":36.7062,"eur":40.4605,"bin":null,"pct":0.0567},{"date":"2024-09-12","usd":36.7323,"eur":40.4525,"bin":null,"pct":0.0711},{"date":"2024-09-13","usd":36.741,"eur":40.5437,"bin":null,"pct":0.0237},{"date":"2024-09-14","usd":36.741,"eur":40.5437,"bin":null,"pct":0.0},{"date":"2024-09-15","usd":36.741,"eur":40.5437,"bin":null,"pct":0.0},{"date":"2024-09-16","usd":36.741,"eur":40.5437,"bin":null,"pct":0.0},{"date":"2024-09-17","usd":36.7751,"eur":40.7781,"bin":null,"pct":0.0928},{"date":"2024-09-18","usd":36.7702,"eur":40.8852,"bin":null,"pct":-0.0133},{"date":"2024-09-19","usd":36.7789,"eur":40.8904,"bin":null,"pct":0.0237},{"date":"2024-09-20","usd":36.8013,"eur":40.9679,"bin":null,"pct":0.0609},{"date":"2024-09-21","usd":36.8013,"eur":40.9679,"bin":null,"pct":0.0},{"date":"2024-09-22","usd":36.8013,"eur":40.9679,"bin":null,"pct":0.0},{"date":"2024-09-23","usd":36.823,"eur":41.037,"bin":null,"pct":0.059},{"date":"2024-09-24","usd":36.813,"eur":40.9644,"bin":null,"pct":-0.0272},{"date":"2024-09-25","usd":36.8105,"eur":41.068,"bin":null,"pct":-0.0068},{"date":"2024-09-26","usd":36.8507,"eur":41.1331,"bin":null,"pct":0.1092},{"date":"2024-09-27","usd":36.8655,"eur":41.1784,"bin":null,"pct":0.0402},{"date":"2024-09-28","usd":36.8655,"eur":41.1784,"bin":null,"pct":0.0},{"date":"2024-09-29","usd":36.8655,"eur":41.1784,"bin":null,"pct":0.0},{"date":"2024-09-30","usd":36.9086,"eur":41.2335,"bin":null,"pct":0.1169},{"date":"2024-10-01","usd":36.9227,"eur":41.1869,"bin":null,"pct":0.0382},{"date":"2024-10-02","usd":36.9187,"eur":null,"bin":null,"pct":-0.0108},{"date":"2024-10-03","usd":36.9812,"eur":40.8265,"bin":null,"pct":0.1693},{"date":"2024-10-04","usd":36.9855,"eur":40.741,"bin":null,"pct":0.0116},{"date":"2024-10-05","usd":36.9855,"eur":40.741,"bin":null,"pct":0.0},{"date":"2024-10-06","usd":36.9855,"eur":40.741,"bin":null,"pct":0.0},{"date":"2024-10-07","usd":37.0358,"eur":40.6042,"bin":null,"pct":0.136},{"date":"2024-10-08","usd":37.0397,"eur":40.6488,"bin":null,"pct":0.0105},{"date":"2024-10-09","usd":37.074,"eur":40.665,"bin":null,"pct":0.0926},{"date":"2024-10-10","usd":37.5295,"eur":41.1053,"bin":null,"pct":1.2286},{"date":"2024-10-11","usd":37.6502,"eur":41.134,"bin":null,"pct":0.3216},{"date":"2024-10-12","usd":37.6502,"eur":41.134,"bin":null,"pct":0.0},{"date":"2024-10-13","usd":37.6502,"eur":41.134,"bin":null,"pct":0.0},{"date":"2024-10-14","usd":38.8857,"eur":42.5763,"bin":null,"pct":3.2815},{"date":"2024-10-15","usd":38.888,"eur":42.4369,"bin":null,"pct":0.0059},{"date":"2024-10-16","usd":38.9179,"eur":42.4423,"bin":null,"pct":0.0769},{"date":"2024-10-17","usd":39.0116,"eur":42.4407,"bin":null,"pct":0.2408},{"date":"2024-10-18","usd":39.1344,"eur":42.3751,"bin":null,"pct":0.3148},{"date":"2024-10-19","usd":39.1344,"eur":42.3751,"bin":null,"pct":0.0},{"date":"2024-10-20","usd":39.1344,"eur":42.3751,"bin":null,"pct":0.0},{"date":"2024-10-21","usd":39.1699,"eur":42.5279,"bin":null,"pct":0.0907},{"date":"2024-10-22","usd":39.1813,"eur":42.4177,"bin":null,"pct":0.0291},{"date":"2024-10-23","usd":39.323,"eur":42.5137,"bin":null,"pct":0.3617},{"date":"2024-10-24","usd":39.4617,"eur":42.537,"bin":null,"pct":0.3527},{"date":"2024-10-25","usd":40.8803,"eur":44.147,"bin":null,"pct":3.5949},{"date":"2024-10-26","usd":40.8803,"eur":44.147,"bin":null,"pct":0.0},{"date":"2024-10-27","usd":40.8803,"eur":44.147,"bin":null,"pct":0.0},{"date":"2024-10-28","usd":41.0429,"eur":44.4232,"bin":null,"pct":0.3977},{"date":"2024-10-29","usd":41.7361,"eur":45.1785,"bin":null,"pct":1.689},{"date":"2024-10-30","usd":42.2256,"eur":45.5614,"bin":null,"pct":1.1728},{"date":"2024-10-31","usd":42.5622,"eur":46.1983,"bin":null,"pct":0.7971},{"date":"2024-11-01","usd":42.7101,"eur":46.3665,"bin":null,"pct":0.3475},{"date":"2024-11-02","usd":42.7101,"eur":46.3665,"bin":null,"pct":0.0},{"date":"2024-11-03","usd":42.7101,"eur":46.3665,"bin":null,"pct":0.0},{"date":"2024-11-04","usd":42.7101,"eur":46.3665,"bin":null,"pct":0.0},{"date":"2024-11-05","usd":42.8569,"eur":46.5152,"bin":null,"pct":0.3437},{"date":"2024-11-06","usd":43.4576,"eur":47.4014,"bin":null,"pct":1.4016},{"date":"2024-11-07","usd":43.7822,"eur":46.959,"bin":null,"pct":0.7469},{"date":"2024-11-08","usd":44.1861,"eur":47.808,"bin":null,"pct":0.9225},{"date":"2024-11-09","usd":44.1861,"eur":47.808,"bin":null,"pct":0.0},{"date":"2024-11-10","usd":44.1861,"eur":47.808,"bin":null,"pct":0.0},{"date":"2024-11-11","usd":44.7035,"eur":48.0554,"bin":null,"pct":1.171},{"date":"2024-11-12","usd":44.7544,"eur":47.6196,"bin":null,"pct":0.1139},{"date":"2024-11-13","usd":44.9289,"eur":47.71,"bin":null,"pct":0.3899},{"date":"2024-11-14","usd":45.053,"eur":47.608,"bin":null,"pct":0.2762},{"date":"2024-11-15","usd":45.507,"eur":48.0718,"bin":null,"pct":1.0077},{"date":"2024-11-16","usd":45.507,"eur":48.0718,"bin":null,"pct":0.0},{"date":"2024-11-17","usd":45.507,"eur":48.0718,"bin":null,"pct":0.0},{"date":"2024-11-18","usd":45.507,"eur":48.0718,"bin":null,"pct":0.0},{"date":"2024-11-19","usd":45.7894,"eur":48.257,"bin":null,"pct":0.6206},{"date":"2024-11-20","usd":45.841,"eur":48.5374,"bin":null,"pct":0.1127},{"date":"2024-11-21","usd":46.0588,"eur":48.4962,"bin":null,"pct":0.4751},{"date":"2024-11-22","usd":46.3273,"eur":48.7451,"bin":null,"pct":0.583},{"date":"2024-11-23","usd":46.3273,"eur":48.7451,"bin":null,"pct":0.0},{"date":"2024-11-24","usd":46.3273,"eur":48.7451,"bin":null,"pct":0.0},{"date":"2024-11-25","usd":46.6176,"eur":48.5434,"bin":null,"pct":0.6266},{"date":"2024-11-26","usd":46.6427,"eur":48.9333,"bin":null,"pct":0.0538},{"date":"2024-11-27","usd":46.7537,"eur":49.0774,"bin":null,"pct":0.238},{"date":"2024-11-28","usd":46.8554,"eur":49.4006,"bin":null,"pct":0.2175},{"date":"2024-11-29","usd":47.3138,"eur":49.9208,"bin":null,"pct":0.9783},{"date":"2024-11-30","usd":47.3138,"eur":49.9208,"bin":null,"pct":0.0},{"date":"2024-12-01","usd":47.3138,"eur":49.9208,"bin":null,"pct":0.0},{"date":"2024-12-02","usd":47.6074,"eur":50.2639,"bin":null,"pct":0.6205},{"date":"2024-12-03","usd":47.7293,"eur":50.0012,"bin":null,"pct":0.2561},{"date":"2024-12-04","usd":47.8552,"eur":50.3341,"bin":null,"pct":0.2638},{"date":"2024-12-05","usd":48.1183,"eur":50.7119,"bin":null,"pct":0.5498},{"date":"2024-12-06","usd":48.3265,"eur":51.0159,"bin":null,"pct":0.4327},{"date":"2024-12-07","usd":48.3265,"eur":51.0159,"bin":null,"pct":0.0},{"date":"2024-12-08","usd":48.3265,"eur":51.0159,"bin":null,"pct":0.0},{"date":"2024-12-09","usd":48.7903,"eur":51.4918,"bin":null,"pct":0.9597},{"date":"2024-12-10","usd":48.8695,"eur":51.6697,"bin":null,"pct":0.1623},{"date":"2024-12-11","usd":49.1111,"eur":51.7091,"bin":null,"pct":0.4944},{"date":"2024-12-12","usd":49.4759,"eur":51.9713,"bin":null,"pct":0.7428},{"date":"2024-12-13","usd":49.9068,"eur":52.4795,"bin":null,"pct":0.8709},{"date":"2024-12-14","usd":49.9068,"eur":52.4795,"bin":null,"pct":0.0},{"date":"2024-12-15","usd":49.9068,"eur":52.4795,"bin":null,"pct":0.0},{"date":"2024-12-16","usd":50.3319,"eur":52.77,"bin":null,"pct":0.8518},{"date":"2024-12-17","usd":50.371,"eur":null,"bin":null,"pct":0.0777},{"date":"2024-12-18","usd":50.5419,"eur":53.0422,"bin":null,"pct":0.3393},{"date":"2024-12-19","usd":50.9545,"eur":53.4401,"bin":null,"pct":0.8164},{"date":"2024-12-20","usd":51.3504,"eur":53.4054,"bin":null,"pct":0.777},{"date":"2024-12-21","usd":51.3504,"eur":53.4054,"bin":null,"pct":0.0},{"date":"2024-12-22","usd":51.3504,"eur":53.4054,"bin":null,"pct":0.0},{"date":"2024-12-23","usd":51.5398,"eur":53.6091,"bin":null,"pct":0.3688},{"date":"2024-12-24","usd":51.5398,"eur":53.6091,"bin":null,"pct":0.0},{"date":"2024-12-25","usd":51.5398,"eur":53.6091,"bin":null,"pct":0.0},{"date":"2024-12-26","usd":51.64,"eur":53.6736,"bin":null,"pct":0.1944},{"date":"2024-12-27","usd":51.7659,"eur":53.8593,"bin":null,"pct":0.2438},{"date":"2024-12-28","usd":51.7659,"eur":53.8593,"bin":null,"pct":0.0},{"date":"2024-12-29","usd":51.7659,"eur":53.8593,"bin":null,"pct":0.0},{"date":"2024-12-30","usd":51.9345,"eur":54.1069,"bin":null,"pct":0.3257},{"date":"2024-12-31","usd":51.9345,"eur":54.1069,"bin":null,"pct":0.0},{"date":"2025-01-01","usd":51.9345,"eur":54.1069,"bin":null,"pct":0.0},{"date":"2025-01-02","usd":52.0271,"eur":54.0754,"bin":null,"pct":0.1783},{"date":"2025-01-03","usd":52.5723,"eur":54.1673,"bin":null,"pct":1.0479},{"date":"2025-01-04","usd":52.5723,"eur":54.1673,"bin":null,"pct":0.0},{"date":"2025-01-05","usd":52.5723,"eur":54.1673,"bin":null,"pct":0.0},{"date":"2025-01-06","usd":52.5723,"eur":54.1673,"bin":null,"pct":0.0},{"date":"2025-01-07","usd":53.012,"eur":54.5011,"bin":null,"pct":0.8364},{"date":"2025-01-08","usd":53.0704,"eur":55.0324,"bin":null,"pct":0.1102},{"date":"2025-01-09","usd":53.2827,"eur":null,"bin":null,"pct":0.4},{"date":"2025-01-10","usd":53.8522,"eur":55.5222,"bin":null,"pct":1.0688},{"date":"2025-01-11","usd":53.8522,"eur":55.5222,"bin":null,"pct":0.0},{"date":"2025-01-12","usd":53.8522,"eur":55.5222,"bin":null,"pct":0.0},{"date":"2025-01-13","usd":53.8522,"eur":55.5222,"bin":null,"pct":0.0},{"date":"2025-01-14","usd":53.8791,"eur":55.1991,"bin":null,"pct":0.05},{"date":"2025-01-15","usd":53.9642,"eur":55.4272,"bin":null,"pct":0.1579},{"date":"2025-01-16","usd":54.3694,"eur":56.107,"bin":null,"pct":0.7509},{"date":"2025-01-17","usd":54.76,"eur":56.2801,"bin":null,"pct":0.7184},{"date":"2025-01-18","usd":54.76,"eur":56.2801,"bin":null,"pct":0.0},{"date":"2025-01-19","usd":54.76,"eur":56.2801,"bin":null,"pct":0.0},{"date":"2025-01-20","usd":54.9113,"eur":56.5905,"bin":null,"pct":0.2763},{"date":"2025-01-21","usd":54.9852,"eur":57.3155,"bin":null,"pct":0.1346},{"date":"2025-01-22","usd":55.2999,"eur":57.4472,"bin":null,"pct":0.5723},{"date":"2025-01-23","usd":55.7611,"eur":58.0997,"bin":null,"pct":0.834},{"date":"2025-01-24","usd":56.283,"eur":58.5895,"bin":null,"pct":0.936},{"date":"2025-01-25","usd":56.283,"eur":58.5895,"bin":null,"pct":0.0},{"date":"2025-01-26","usd":56.283,"eur":58.5895,"bin":null,"pct":0.0},{"date":"2025-01-27","usd":56.6522,"eur":59.3409,"bin":null,"pct":0.656},{"date":"2025-01-28","usd":56.8562,"eur":59.6689,"bin":null,"pct":0.3601},{"date":"2025-01-29","usd":57.2974,"eur":59.7956,"bin":null,"pct":0.776},{"date":"2025-01-30","usd":57.3929,"eur":59.7483,"bin":null,"pct":0.1667},{"date":"2025-01-31","usd":57.9666,"eur":60.5003,"bin":null,"pct":0.9996},{"date":"2025-02-01","usd":57.9666,"eur":60.5003,"bin":null,"pct":0.0},{"date":"2025-02-02","usd":57.9666,"eur":60.5003,"bin":null,"pct":0.0},{"date":"2025-02-03","usd":58.4437,"eur":60.6295,"bin":null,"pct":0.8231},{"date":"2025-02-04","usd":58.5404,"eur":60.0502,"bin":null,"pct":0.1655},{"date":"2025-02-05","usd":58.7938,"eur":60.9992,"bin":null,"pct":0.4329},{"date":"2025-02-06","usd":59.4605,"eur":62.0084,"bin":null,"pct":1.134},{"date":"2025-02-07","usd":60.1417,"eur":62.3904,"bin":null,"pct":1.1456},{"date":"2025-02-08","usd":60.1417,"eur":62.3904,"bin":null,"pct":0.0},{"date":"2025-02-09","usd":60.1417,"eur":62.3904,"bin":null,"pct":0.0},{"date":"2025-02-10","usd":60.5211,"eur":62.804,"bin":null,"pct":0.6308},{"date":"2025-02-11","usd":60.5428,"eur":62.4323,"bin":null,"pct":0.0359},{"date":"2025-02-12","usd":61.0278,"eur":63.0472,"bin":null,"pct":0.8011},{"date":"2025-02-13","usd":61.3462,"eur":63.4485,"bin":null,"pct":0.5217},{"date":"2025-02-14","usd":61.8227,"eur":64.3111,"bin":null,"pct":0.7767},{"date":"2025-02-15","usd":61.8227,"eur":64.3111,"bin":null,"pct":0.0},{"date":"2025-02-16","usd":61.8227,"eur":64.3111,"bin":null,"pct":0.0},{"date":"2025-02-17","usd":62.0708,"eur":65.2054,"bin":null,"pct":0.4013},{"date":"2025-02-18","usd":62.0999,"eur":65.0913,"bin":null,"pct":0.0469},{"date":"2025-02-19","usd":62.1834,"eur":64.9922,"bin":null,"pct":0.1345},{"date":"2025-02-20","usd":62.5107,"eur":65.2149,"bin":null,"pct":0.5263},{"date":"2025-02-21","usd":63.2065,"eur":66.0666,"bin":null,"pct":1.1131},{"date":"2025-02-22","usd":63.2065,"eur":66.0666,"bin":null,"pct":0.0},{"date":"2025-02-23","usd":63.2065,"eur":66.0666,"bin":null,"pct":0.0},{"date":"2025-02-24","usd":63.4139,"eur":66.3848,"bin":null,"pct":0.3281},{"date":"2025-02-25","usd":63.4938,"eur":66.4323,"bin":null,"pct":0.126},{"date":"2025-02-26","usd":64.0191,"eur":67.245,"bin":null,"pct":0.8273},{"date":"2025-02-27","usd":64.2406,"eur":67.4167,"bin":null,"pct":0.346},{"date":"2025-02-28","usd":64.2464,"eur":66.9113,"bin":null,"pct":0.009},{"date":"2025-03-01","usd":64.2464,"eur":66.9113,"bin":null,"pct":0.0},{"date":"2025-03-02","usd":64.2464,"eur":66.9113,"bin":null,"pct":0.0},{"date":"2025-03-03","usd":64.2464,"eur":66.9113,"bin":null,"pct":0.0},{"date":"2025-03-04","usd":64.2464,"eur":66.9113,"bin":null,"pct":0.0},{"date":"2025-03-05","usd":64.4844,"eur":67.1218,"bin":null,"pct":0.3704},{"date":"2025-03-06","usd":64.6116,"eur":69.4949,"bin":null,"pct":0.1973},{"date":"2025-03-07","usd":64.766,"eur":70.2067,"bin":null,"pct":0.239},{"date":"2025-03-08","usd":64.766,"eur":70.2067,"bin":null,"pct":0.0},{"date":"2025-03-09","usd":64.766,"eur":70.2067,"bin":null,"pct":0.0},{"date":"2025-03-10","usd":65.2662,"eur":70.9124,"bin":null,"pct":0.7723},{"date":"2025-03-11","usd":65.4151,"eur":70.8799,"bin":null,"pct":0.2281},{"date":"2025-03-12","usd":65.6268,"eur":71.6317,"bin":null,"pct":0.3236},{"date":"2025-03-13","usd":66.2542,"eur":72.3098,"bin":null,"pct":0.956},{"date":"2025-03-14","usd":66.4368,"eur":72.151,"bin":null,"pct":0.2756},{"date":"2025-03-15","usd":66.4368,"eur":72.151,"bin":null,"pct":0.0},{"date":"2025-03-16","usd":66.4368,"eur":72.151,"bin":null,"pct":0.0},{"date":"2025-03-17","usd":66.5573,"eur":72.3984,"bin":null,"pct":0.1814},{"date":"2025-03-18","usd":66.788,"eur":72.9145,"bin":null,"pct":0.3466},{"date":"2025-03-19","usd":66.788,"eur":72.9145,"bin":null,"pct":0.0},{"date":"2025-03-20","usd":67.6344,"eur":73.7168,"bin":null,"pct":1.2673},{"date":"2025-03-21","usd":67.8583,"eur":73.4586,"bin":null,"pct":0.331},{"date":"2025-03-22","usd":67.8583,"eur":73.4586,"bin":null,"pct":0.0},{"date":"2025-03-23","usd":67.8583,"eur":73.4586,"bin":null,"pct":0.0},{"date":"2025-03-24","usd":68.3116,"eur":73.963,"bin":null,"pct":0.668},{"date":"2025-03-25","usd":68.3936,"eur":73.8507,"bin":null,"pct":0.12},{"date":"2025-03-26","usd":68.6994,"eur":74.2991,"bin":null,"pct":0.4471},{"date":"2025-03-27","usd":69.0188,"eur":74.454,"bin":null,"pct":0.4649},{"date":"2025-03-28","usd":69.4387,"eur":74.9389,"bin":null,"pct":0.6084},{"date":"2025-03-29","usd":69.4387,"eur":74.9389,"bin":null,"pct":0.0},{"date":"2025-03-30","usd":69.4387,"eur":74.9389,"bin":null,"pct":0.0},{"date":"2025-03-31","usd":69.5664,"eur":75.3536,"bin":null,"pct":0.1839},{"date":"2025-04-01","usd":69.776,"eur":75.4537,"bin":null,"pct":0.3013},{"date":"2025-04-02","usd":70.0141,"eur":75.646,"bin":null,"pct":0.3412},{"date":"2025-04-03","usd":70.2493,"eur":76.2331,"bin":null,"pct":0.3359},{"date":"2025-04-04","usd":70.5852,"eur":78.4809,"bin":null,"pct":0.4782},{"date":"2025-04-05","usd":70.5852,"eur":78.4809,"bin":null,"pct":0.0},{"date":"2025-04-06","usd":70.5852,"eur":78.4809,"bin":null,"pct":0.0},{"date":"2025-04-07","usd":72.5816,"eur":79.3197,"bin":null,"pct":2.8284},{"date":"2025-04-08","usd":73.3576,"eur":80.0691,"bin":null,"pct":1.0691},{"date":"2025-04-09","usd":74.2787,"eur":81.0462,"bin":null,"pct":1.2556},{"date":"2025-04-10","usd":75.8025,"eur":83.6966,"bin":null,"pct":2.0515},{"date":"2025-04-11","usd":77.2646,"eur":86.3061,"bin":null,"pct":1.9288},{"date":"2025-04-12","usd":77.2646,"eur":86.3061,"bin":null,"pct":0.0},{"date":"2025-04-13","usd":77.2646,"eur":86.3061,"bin":null,"pct":0.0},{"date":"2025-04-14","usd":78.3635,"eur":88.8556,"bin":null,"pct":1.4223},{"date":"2025-04-15","usd":78.5914,"eur":89.3042,"bin":null,"pct":0.2908},{"date":"2025-04-16","usd":79.7844,"eur":90.3822,"bin":null,"pct":1.518},{"date":"2025-04-17","usd":79.7844,"eur":90.3822,"bin":null,"pct":0.0},{"date":"2025-04-18","usd":79.7844,"eur":90.3822,"bin":null,"pct":0.0},{"date":"2025-04-19","usd":79.7844,"eur":90.3822,"bin":null,"pct":0.0},{"date":"2025-04-20","usd":79.7844,"eur":90.3822,"bin":null,"pct":0.0},{"date":"2025-04-21","usd":80.9598,"eur":92.0918,"bin":null,"pct":1.4732},{"date":"2025-04-22","usd":81.7613,"eur":94.0018,"bin":null,"pct":0.99},{"date":"2025-04-23","usd":82.3788,"eur":null,"bin":null,"pct":0.7552},{"date":"2025-04-24","usd":83.4182,"eur":94.7706,"bin":null,"pct":1.2617},{"date":"2025-04-25","usd":84.4204,"eur":96.0071,"bin":null,"pct":1.2014},{"date":"2025-04-26","usd":84.4204,"eur":96.0071,"bin":null,"pct":0.0},{"date":"2025-04-27","usd":84.4204,"eur":96.0071,"bin":null,"pct":0.0},{"date":"2025-04-28","usd":86.1143,"eur":97.8439,"bin":null,"pct":2.0065},{"date":"2025-04-29","usd":86.6564,"eur":98.5985,"bin":null,"pct":0.6295},{"date":"2025-04-30","usd":86.8465,"eur":99.4826,"bin":null,"pct":0.2194},{"date":"2025-05-01","usd":86.8465,"eur":99.4826,"bin":null,"pct":0.0},{"date":"2025-05-02","usd":87.5681,"eur":99.4826,"bin":null,"pct":0.8309},{"date":"2025-05-03","usd":87.5681,"eur":99.4826,"bin":null,"pct":0.0},{"date":"2025-05-04","usd":87.5681,"eur":99.4826,"bin":null,"pct":0.0},{"date":"2025-05-05","usd":88.6405,"eur":100.6992,"bin":null,"pct":1.2246},{"date":"2025-05-06","usd":88.7224,"eur":100.5872,"bin":null,"pct":0.0924},{"date":"2025-05-07","usd":91.2113,"eur":103.4528,"bin":null,"pct":2.8053},{"date":"2025-05-08","usd":91.9165,"eur":104.4548,"bin":null,"pct":0.7731},{"date":"2025-05-09","usd":92.831,"eur":104.6484,"bin":null,"pct":0.9949},{"date":"2025-05-10","usd":92.831,"eur":104.6484,"bin":null,"pct":0.0},{"date":"2025-05-11","usd":92.831,"eur":104.6484,"bin":null,"pct":0.0},{"date":"2025-05-12","usd":93.0495,"eur":104.8026,"bin":null,"pct":0.2354},{"date":"2025-05-13","usd":93.0623,"eur":103.4788,"bin":null,"pct":0.0138},{"date":"2025-05-14","usd":93.5796,"eur":104.5069,"bin":null,"pct":0.5559},{"date":"2025-05-15","usd":94.1557,"eur":105.5881,"bin":null,"pct":0.6156},{"date":"2025-05-16","usd":94.3241,"eur":105.5279,"bin":null,"pct":0.1789},{"date":"2025-05-17","usd":94.3241,"eur":105.5279,"bin":null,"pct":0.0},{"date":"2025-05-18","usd":94.3241,"eur":105.5279,"bin":null,"pct":0.0},{"date":"2025-05-19","usd":94.763,"eur":105.6352,"bin":null,"pct":0.4653},{"date":"2025-05-20","usd":94.8024,"eur":106.7428,"bin":null,"pct":0.0416},{"date":"2025-05-21","usd":94.8556,"eur":106.575,"bin":null,"pct":0.0561},{"date":"2025-05-22","usd":94.9652,"eur":107.6526,"bin":null,"pct":0.1155},{"date":"2025-05-23","usd":95.0189,"eur":107.1794,"bin":null,"pct":0.0565},{"date":"2025-05-24","usd":95.0189,"eur":107.1794,"bin":null,"pct":0.0},{"date":"2025-05-25","usd":95.0189,"eur":107.1794,"bin":null,"pct":0.0},{"date":"2025-05-26","usd":95.084,"eur":107.7958,"bin":null,"pct":0.0685},{"date":"2025-05-27","usd":95.2387,"eur":108.3864,"bin":null,"pct":0.1627},{"date":"2025-05-28","usd":95.8052,"eur":108.5827,"bin":null,"pct":0.5948},{"date":"2025-05-29","usd":96.5303,"eur":109.0821,"bin":null,"pct":0.7568},{"date":"2025-05-30","usd":96.8577,"eur":109.9994,"bin":null,"pct":0.3392},{"date":"2025-05-31","usd":96.8577,"eur":109.9994,"bin":null,"pct":0.0},{"date":"2025-06-01","usd":96.8577,"eur":109.9994,"bin":null,"pct":0.0},{"date":"2025-06-02","usd":96.8577,"eur":109.9994,"bin":null,"pct":0.0},{"date":"2025-06-03","usd":97.3126,"eur":110.224,"bin":null,"pct":0.4697},{"date":"2025-06-04","usd":97.4194,"eur":110.9159,"bin":null,"pct":0.1097},{"date":"2025-06-05","usd":97.9031,"eur":111.8974,"bin":null,"pct":0.4965},{"date":"2025-06-06","usd":98.5132,"eur":112.9345,"bin":null,"pct":0.6232},{"date":"2025-06-07","usd":98.5132,"eur":112.9345,"bin":null,"pct":0.0},{"date":"2025-06-08","usd":98.5132,"eur":112.9345,"bin":null,"pct":0.0},{"date":"2025-06-09","usd":99.0916,"eur":112.8683,"bin":null,"pct":0.5871},{"date":"2025-06-10","usd":99.1247,"eur":113.134,"bin":null,"pct":0.0334},{"date":"2025-06-11","usd":99.6983,"eur":113.9342,"bin":null,"pct":0.5787},{"date":"2025-06-12","usd":100.3396,"eur":115.2029,"bin":null,"pct":0.6432},{"date":"2025-06-13","usd":101.0822,"eur":117.0825,"bin":null,"pct":0.7401},{"date":"2025-06-14","usd":101.0822,"eur":117.0825,"bin":null,"pct":0.0},{"date":"2025-06-15","usd":101.0822,"eur":117.0825,"bin":null,"pct":0.0},{"date":"2025-06-16","usd":101.0822,"eur":117.0825,"bin":null,"pct":0.0},{"date":"2025-06-17","usd":102.157,"eur":117.9045,"bin":null,"pct":1.0633},{"date":"2025-06-18","usd":102.8083,"eur":118.5431,"bin":null,"pct":0.6375},{"date":"2025-06-19","usd":103.7355,"eur":119.4462,"bin":null,"pct":0.9019},{"date":"2025-06-20","usd":104.5434,"eur":120.0033,"bin":null,"pct":0.7788},{"date":"2025-06-21","usd":105.4527,"eur":121.5005,"bin":null,"pct":0.8698},{"date":"2025-06-22","usd":105.4527,"eur":121.5005,"bin":null,"pct":0.0},{"date":"2025-06-23","usd":105.4527,"eur":121.5005,"bin":null,"pct":0.0},{"date":"2025-06-24","usd":105.4527,"eur":121.5005,"bin":null,"pct":0.0},{"date":"2025-06-25","usd":105.4527,"eur":121.5005,"bin":null,"pct":0.0},{"date":"2025-06-26","usd":106.1685,"eur":123.4336,"bin":null,"pct":0.6788},{"date":"2025-06-27","usd":106.862,"eur":125.1247,"bin":null,"pct":0.6532},{"date":"2025-06-28","usd":106.862,"eur":125.1247,"bin":null,"pct":0.0},{"date":"2025-06-29","usd":106.862,"eur":125.1247,"bin":null,"pct":0.0},{"date":"2025-06-30","usd":107.6245,"eur":126.193,"bin":null,"pct":0.7135},{"date":"2025-07-01","usd":108.1891,"eur":127.1384,"bin":null,"pct":0.5246},{"date":"2025-07-02","usd":108.9785,"eur":128.3091,"bin":null,"pct":0.7296},{"date":"2025-07-03","usd":109.7724,"eur":129.1955,"bin":null,"pct":0.7285},{"date":"2025-07-04","usd":110.5569,"eur":130.1741,"bin":null,"pct":0.7147},{"date":"2025-07-05","usd":111.4186,"eur":131.2389,"bin":null,"pct":0.7794},{"date":"2025-07-06","usd":111.4186,"eur":131.2389,"bin":null,"pct":0.0},{"date":"2025-07-07","usd":111.4186,"eur":131.2389,"bin":null,"pct":0.0},{"date":"2025-07-08","usd":112.1278,"eur":131.5865,"bin":null,"pct":0.6365},{"date":"2025-07-09","usd":112.8285,"eur":132.0748,"bin":null,"pct":0.6249},{"date":"2025-07-10","usd":113.7505,"eur":133.2655,"bin":null,"pct":0.8172},{"date":"2025-07-11","usd":114.4115,"eur":133.6406,"bin":null,"pct":0.5811},{"date":"2025-07-12","usd":115.3279,"eur":134.8575,"bin":null,"pct":0.801},{"date":"2025-07-13","usd":115.3279,"eur":134.8575,"bin":null,"pct":0.0},{"date":"2025-07-14","usd":115.3279,"eur":134.8575,"bin":null,"pct":0.0},{"date":"2025-07-15","usd":115.8446,"eur":135.3459,"bin":null,"pct":0.448},{"date":"2025-07-16","usd":116.8191,"eur":135.6714,"bin":null,"pct":0.8412},{"date":"2025-07-17","usd":117.4036,"eur":136.16,"bin":null,"pct":0.5003},{"date":"2025-07-18","usd":118.2874,"eur":137.0655,"bin":null,"pct":0.7528},{"date":"2025-07-19","usd":119.1446,"eur":138.8452,"bin":null,"pct":0.7247},{"date":"2025-07-20","usd":119.1446,"eur":138.8452,"bin":null,"pct":0.0},{"date":"2025-07-21","usd":119.1446,"eur":138.8452,"bin":null,"pct":0.0},{"date":"2025-07-22","usd":119.6662,"eur":140.0705,"bin":null,"pct":0.4378},{"date":"2025-07-23","usd":120.4239,"eur":141.3223,"bin":null,"pct":0.6332},{"date":"2025-07-24","usd":121.3469,"eur":142.3472,"bin":null,"pct":0.7665},{"date":"2025-07-25","usd":121.3469,"eur":142.3472,"bin":null,"pct":0.0},{"date":"2025-07-26","usd":122.17,"eur":143.4031,"bin":null,"pct":0.6783},{"date":"2025-07-27","usd":122.17,"eur":143.4031,"bin":null,"pct":0.0},{"date":"2025-07-28","usd":122.17,"eur":143.4031,"bin":null,"pct":0.0},{"date":"2025-07-29","usd":122.8408,"eur":142.8417,"bin":null,"pct":0.5491},{"date":"2025-07-30","usd":123.8718,"eur":142.735,"bin":null,"pct":0.8393},{"date":"2025-07-31","usd":124.5102,"eur":142.9539,"bin":null,"pct":0.5154},{"date":"2025-08-01","usd":125.4247,"eur":143.5009,"bin":null,"pct":0.7345},{"date":"2025-08-02","usd":126.2802,"eur":145.8865,"bin":null,"pct":0.6821},{"date":"2025-08-03","usd":126.2802,"eur":145.8865,"bin":null,"pct":0.0},{"date":"2025-08-04","usd":126.2802,"eur":145.8865,"bin":null,"pct":0.0},{"date":"2025-08-05","usd":127.1097,"eur":147.174,"bin":null,"pct":0.6569},{"date":"2025-08-06","usd":128.2409,"eur":148.2042,"bin":null,"pct":0.8899},{"date":"2025-08-07","usd":129.0535,"eur":150.2467,"bin":null,"pct":0.6337},{"date":"2025-08-08","usd":130.0652,"eur":151.1319,"bin":null,"pct":0.7839},{"date":"2025-08-09","usd":131.1241,"eur":152.8422,"bin":null,"pct":0.8141},{"date":"2025-08-10","usd":131.1241,"eur":152.8422,"bin":null,"pct":0.0},{"date":"2025-08-11","usd":131.1241,"eur":152.8422,"bin":null,"pct":0.0},{"date":"2025-08-12","usd":132.3026,"eur":153.3586,"bin":null,"pct":0.8988},{"date":"2025-08-13","usd":133.5159,"eur":155.7596,"bin":null,"pct":0.9171},{"date":"2025-08-14","usd":134.4812,"eur":157.5313,"bin":null,"pct":0.723},{"date":"2025-08-15","usd":135.6399,"eur":158.0557,"bin":null,"pct":0.8616},{"date":"2025-08-16","usd":136.8931,"eur":160.2827,"bin":null,"pct":0.9239},{"date":"2025-08-17","usd":136.8931,"eur":160.2827,"bin":null,"pct":0.0},{"date":"2025-08-18","usd":136.8931,"eur":160.2827,"bin":null,"pct":0.0},{"date":"2025-08-19","usd":136.8931,"eur":160.2827,"bin":null,"pct":0.0},{"date":"2025-08-20","usd":138.1283,"eur":161.222,"bin":null,"pct":0.9023},{"date":"2025-08-21","usd":139.4016,"eur":162.5325,"bin":null,"pct":0.9218},{"date":"2025-08-22","usd":140.66,"eur":163.3513,"bin":null,"pct":0.9027},{"date":"2025-08-23","usd":141.8843,"eur":166.2785,"bin":null,"pct":0.8704},{"date":"2025-08-24","usd":141.8843,"eur":166.2785,"bin":null,"pct":0.0},{"date":"2025-08-25","usd":141.8843,"eur":166.2785,"bin":null,"pct":0.0},{"date":"2025-08-26","usd":143.0381,"eur":167.3388,"bin":null,"pct":0.8132},{"date":"2025-08-27","usd":144.3732,"eur":168.3406,"bin":null,"pct":0.9334},{"date":"2025-08-28","usd":145.7543,"eur":169.1301,"bin":null,"pct":0.9566},{"date":"2025-08-29","usd":147.0825,"eur":171.5497,"bin":null,"pct":0.9113},{"date":"2025-08-30","usd":148.444,"eur":173.6617,"bin":null,"pct":0.9257},{"date":"2025-08-31","usd":148.444,"eur":173.6617,"bin":null,"pct":0.0},{"date":"2025-09-01","usd":148.444,"eur":173.6617,"bin":null,"pct":0.0},{"date":"2025-09-02","usd":149.4677,"eur":174.931,"bin":null,"pct":0.6896},{"date":"2025-09-03","usd":150.7952,"eur":175.877,"bin":null,"pct":0.8882},{"date":"2025-09-04","usd":151.7627,"eur":177.0175,"bin":null,"pct":0.6416},{"date":"2025-09-05","usd":152.8216,"eur":177.8416,"bin":null,"pct":0.6977},{"date":"2025-09-06","usd":154.0108,"eur":180.8826,"bin":null,"pct":0.7782},{"date":"2025-09-07","usd":154.0108,"eur":180.8826,"bin":null,"pct":0.0},{"date":"2025-09-08","usd":154.0108,"eur":180.8826,"bin":null,"pct":0.0},{"date":"2025-09-09","usd":154.9825,"eur":182.0936,"bin":null,"pct":0.6309},{"date":"2025-09-10","usd":156.3739,"eur":183.339,"bin":null,"pct":0.8978},{"date":"2025-09-11","usd":157.7287,"eur":184.8754,"bin":null,"pct":0.8664},{"date":"2025-09-12","usd":158.9289,"eur":186.5841,"bin":null,"pct":0.7609},{"date":"2025-09-13","usd":160.4479,"eur":188.0289,"bin":null,"pct":0.9558},{"date":"2025-09-14","usd":160.4479,"eur":188.0289,"bin":null,"pct":0.0},{"date":"2025-09-15","usd":160.4479,"eur":188.0289,"bin":null,"pct":0.0},{"date":"2025-09-16","usd":160.4479,"eur":188.0289,"bin":null,"pct":0.0},{"date":"2025-09-17","usd":161.888,"eur":191.7839,"bin":null,"pct":0.8975},{"date":"2025-09-18","usd":163.6474,"eur":193.9074,"bin":null,"pct":1.0868},{"date":"2025-09-19","usd":165.4101,"eur":194.7439,"bin":null,"pct":1.0771},{"date":"2025-09-20","usd":166.5834,"eur":195.6755,"bin":null,"pct":0.7093},{"date":"2025-09-21","usd":166.5834,"eur":195.6755,"bin":268.4697,"pct":0.0},{"date":"2025-09-22","usd":166.5834,"eur":195.6755,"bin":268.3799,"pct":0.0},{"date":"2025-09-23","usd":168.4157,"eur":198.2152,"bin":271.2739,"pct":1.0999},{"date":"2025-09-24","usd":169.9761,"eur":200.4732,"bin":282.387,"pct":0.9265},{"date":"2025-09-25","usd":171.8458,"eur":201.7349,"bin":296.764,"pct":1.1},{"date":"2025-09-26","usd":173.7361,"eur":202.7761,"bin":295.9724,"pct":1.1},{"date":"2025-09-27","usd":175.6471,"eur":205.3877,"bin":null,"pct":1.0999},{"date":"2025-09-28","usd":175.6471,"eur":205.3877,"bin":null,"pct":0.0},{"date":"2025-09-29","usd":175.6471,"eur":205.3877,"bin":291.1888,"pct":0.0},{"date":"2025-09-30","usd":177.6143,"eur":208.2847,"bin":null,"pct":1.12},{"date":"2025-10-01","usd":179.4308,"eur":210.5136,"bin":293.5066,"pct":1.0227},{"date":"2025-10-02","usd":181.3037,"eur":212.943,"bin":295.7726,"pct":1.0438},{"date":"2025-10-03","usd":183.1369,"eur":214.5229,"bin":295.7431,"pct":1.0111},{"date":"2025-10-04","usd":185.3983,"eur":217.6483,"bin":295.9499,"pct":1.2348},{"date":"2025-10-05","usd":185.3983,"eur":217.6483,"bin":null,"pct":0.0},{"date":"2025-10-06","usd":185.3983,"eur":217.6483,"bin":292.5387,"pct":0.0},{"date":"2025-10-07","usd":187.2893,"eur":219.4019,"bin":297.8238,"pct":1.02},{"date":"2025-10-08","usd":189.2593,"eur":220.9357,"bin":302.997,"pct":1.0518},{"date":"2025-10-09","usd":191.3661,"eur":222.2775,"bin":303.1459,"pct":1.1132},{"date":"2025-10-10","usd":193.2996,"eur":223.638,"bin":297.163,"pct":1.0104},{"date":"2025-10-11","usd":195.2491,"eur":226.036,"bin":null,"pct":1.0085},{"date":"2025-10-12","usd":195.2491,"eur":226.036,"bin":297.5107,"pct":0.0},{"date":"2025-10-13","usd":195.2491,"eur":226.036,"bin":297.0419,"pct":0.0},{"date":"2025-10-14","usd":197.2456,"eur":228.0909,"bin":297.1482,"pct":1.0225},{"date":"2025-10-15","usd":199.1072,"eur":230.4526,"bin":297.979,"pct":0.9438},{"date":"2025-10-16","usd":201.4665,"eur":234.2008,"bin":296.117,"pct":1.1849},{"date":"2025-10-17","usd":203.742,"eur":237.9238,"bin":299.2529,"pct":1.1295},{"date":"2025-10-18","usd":205.6754,"eur":239.9245,"bin":299.2529,"pct":0.9489},{"date":"2025-10-19","usd":205.6754,"eur":239.9245,"bin":299.2529,"pct":0.0},{"date":"2025-10-20","usd":205.6754,"eur":239.9245,"bin":302.6069,"pct":0.0},{"date":"2025-10-21","usd":207.8938,"eur":242.215,"bin":305.269,"pct":1.0786},{"date":"2025-10-22","usd":210.2825,"eur":244.0223,"bin":306.6326,"pct":1.149},{"date":"2025-10-23","usd":212.4837,"eur":246.6787,"bin":307.5538,"pct":1.0468},{"date":"2025-10-24","usd":214.419,"eur":249.0219,"bin":307.1967,"pct":0.9108},{"date":"2025-10-25","usd":216.3714,"eur":251.6551,"bin":307.1967,"pct":0.9106},{"date":"2025-10-26","usd":216.3714,"eur":251.6551,"bin":307.1967,"pct":0.0},{"date":"2025-10-27","usd":216.3714,"eur":251.6551,"bin":305.523,"pct":0.0},{"date":"2025-10-28","usd":218.17,"eur":253.9041,"bin":315.5478,"pct":0.8313},{"date":"2025-10-29","usd":219.8737,"eur":256.3617,"bin":314.0373,"pct":0.7809},{"date":"2025-10-30","usd":221.7438,"eur":258.3426,"bin":311.8468,"pct":0.8505},{"date":"2025-10-31","usd":223.6459,"eur":258.8097,"bin":307.8919,"pct":0.8578},{"date":"2025-11-01","usd":223.9622,"eur":258.8097,"bin":307.8919,"pct":0.1414},{"date":"2025-11-02","usd":223.9622,"eur":258.8097,"bin":307.8919,"pct":0.0},{"date":"2025-11-03","usd":223.9622,"eur":258.8097,"bin":306.3454,"pct":0.0},{"date":"2025-11-04","usd":224.3762,"eur":258.4141,"bin":312.4067,"pct":0.1849},{"date":"2025-11-05","usd":226.1305,"eur":259.634,"bin":314.4458,"pct":0.7819},{"date":"2025-11-06","usd":227.5567,"eur":261.1623,"bin":320.2606,"pct":0.6307},{"date":"2025-11-07","usd":228.4796,"eur":263.293,"bin":317.6838,"pct":0.4056},{"date":"2025-11-08","usd":231.0462,"eur":267.6393,"bin":317.7569,"pct":1.1233},{"date":"2025-11-09","usd":231.0462,"eur":267.6393,"bin":317.7569,"pct":0.0},{"date":"2025-11-10","usd":231.0462,"eur":267.6393,"bin":317.3718,"pct":0.0},{"date":"2025-11-11","usd":231.0938,"eur":267.2762,"bin":330.255,"pct":0.0206},{"date":"2025-11-12","usd":233.0458,"eur":270.2562,"bin":339.9842,"pct":0.8447},{"date":"2025-11-13","usd":233.5576,"eur":270.3289,"bin":349.7,"pct":0.2196},{"date":"2025-11-14","usd":234.8715,"eur":273.0804,"bin":336.2633,"pct":0.5626},{"date":"2025-11-15","usd":236.4601,"eur":274.8423,"bin":336.2633,"pct":0.6764},{"date":"2025-11-16","usd":236.4601,"eur":274.8423,"bin":336.2633,"pct":0.0},{"date":"2025-11-17","usd":236.4601,"eur":274.8423,"bin":339.0056,"pct":0.0},{"date":"2025-11-18","usd":236.8389,"eur":274.3566,"bin":347.5007,"pct":0.1602},{"date":"2025-11-19","usd":237.7505,"eur":275.8144,"bin":345.8315,"pct":0.3849},{"date":"2025-11-20","usd":240.3209,"eur":277.6139,"bin":349.6328,"pct":1.0811},{"date":"2025-11-21","usd":241.578,"eur":278.4283,"bin":347.5666,"pct":0.5231},{"date":"2025-11-22","usd":243.1105,"eur":280.0487,"bin":347.5666,"pct":0.6344},{"date":"2025-11-23","usd":243.1105,"eur":280.0487,"bin":347.5666,"pct":0.0},{"date":"2025-11-24","usd":243.1105,"eur":280.0487,"bin":357.2647,"pct":0.0},{"date":"2025-11-25","usd":243.1105,"eur":280.0487,"bin":362.479,"pct":0.0},{"date":"2025-11-26","usd":243.5727,"eur":281.76,"bin":382.3905,"pct":0.1901},{"date":"2025-11-27","usd":244.6504,"eur":283.4984,"bin":378.0108,"pct":0.4425},{"date":"2025-11-28","usd":245.6697,"eur":284.881,"bin":370.4,"pct":0.4166},{"date":"2025-11-29","usd":247.3003,"eur":286.4034,"bin":384.4831,"pct":0.6637},{"date":"2025-11-30","usd":247.3003,"eur":286.4034,"bin":384.4831,"pct":0.0},{"date":"2025-12-01","usd":247.3003,"eur":286.4034,"bin":384.4831,"pct":0.0},{"date":"2025-12-02","usd":247.4071,"eur":287.8285,"bin":394.0726,"pct":0.0432},{"date":"2025-12-03","usd":249.1989,"eur":287.8285,"bin":403.7497,"pct":0.7242},{"date":"2025-12-04","usd":251.8867,"eur":293.8813,"bin":414.4939,"pct":1.0786},{"date":"2025-12-05","usd":254.8705,"eur":297.3778,"bin":429.7093,"pct":1.1846},{"date":"2025-12-06","usd":257.9287,"eur":300.5076,"bin":429.3035,"pct":1.1999},{"date":"2025-12-07","usd":257.9287,"eur":300.5076,"bin":422.168,"pct":0.0},{"date":"2025-12-08","usd":257.9287,"eur":300.5076,"bin":422.168,"pct":0.0},{"date":"2025-12-09","usd":257.9287,"eur":300.5076,"bin":424.321,"pct":0.0},{"date":"2025-12-10","usd":262.1036,"eur":304.8475,"bin":424.321,"pct":1.6186},{"date":"2025-12-11","usd":265.0662,"eur":308.818,"bin":427.7269,"pct":1.1303},{"date":"2025-12-12","usd":267.7499,"eur":314.3812,"bin":426.5577,"pct":1.0125},{"date":"2025-12-13","usd":270.7893,"eur":317.8985,"bin":420.8894,"pct":1.1352},{"date":"2025-12-14","usd":270.7893,"eur":317.8985,"bin":420.8894,"pct":0.0},{"date":"2025-12-15","usd":270.7893,"eur":317.8985,"bin":420.8894,"pct":0.0},{"date":"2025-12-16","usd":273.5861,"eur":321.874,"bin":432.3755,"pct":1.0328},{"date":"2025-12-17","usd":276.5769,"eur":326.1561,"bin":439.0853,"pct":1.0932},{"date":"2025-12-18","usd":279.5629,"eur":328.3718,"bin":462.248,"pct":1.0796},{"date":"2025-12-19","usd":282.5128,"eur":331.1898,"bin":488.285,"pct":1.0552},{"date":"2025-12-20","usd":285.4024,"eur":334.4003,"bin":488.285,"pct":1.0228},{"date":"2025-12-21","usd":285.4024,"eur":334.4003,"bin":488.285,"pct":0.0},{"date":"2025-12-22","usd":285.4024,"eur":334.4003,"bin":478.7384,"pct":0.0},{"date":"2025-12-23","usd":288.4494,"eur":339.2511,"bin":484.7778,"pct":1.0676},{"date":"2025-12-24","usd":291.3524,"eur":342.9363,"bin":482.9227,"pct":1.0064},{"date":"2025-12-25","usd":291.3524,"eur":342.9363,"bin":546.7528,"pct":0.0},{"date":"2025-12-26","usd":291.3524,"eur":342.9363,"bin":546.7528,"pct":0.0},{"date":"2025-12-27","usd":294.9699,"eur":347.7784,"bin":546.7528,"pct":1.2416},{"date":"2025-12-28","usd":294.9699,"eur":347.7784,"bin":546.7528,"pct":0.0},{"date":"2025-12-29","usd":294.9699,"eur":347.7784,"bin":546.7528,"pct":0.0},{"date":"2025-12-30","usd":298.1431,"eur":351.2454,"bin":561.1769,"pct":1.0758},{"date":"2025-12-31","usd":301.3709,"eur":354.4935,"bin":561.1769,"pct":1.0826},{"date":"2026-01-01","usd":301.3709,"eur":354.4935,"bin":561.1769,"pct":0.0},{"date":"2026-03-09","usd":433.1664,"eur":501.728,"bin":613.4267,"pct":43.732},{"date":"2026-03-10","usd":436.2419,"eur":505.42,"bin":620.9058,"pct":0.71},{"date":"2026-03-11","usd":438.205,"eur":510.2108,"bin":632.7647,"pct":0.45},{"date":"2026-03-12","usd":440.9657,"eur":510.4884,"bin":628.101,"pct":0.63},{"date":"2026-03-13","usd":443.2587,"eur":510.3415,"bin":null,"pct":0.52}];
+
+let allData = [...HISTORICAL];
+let currentPeriod = 90;
+let showUSD = true, showEUR = true, showBIN = true;
+let currentChart = null;
+let viewingDate = null; // null = hoy
+
+// Stats from Excel A4:H16 (updated by Python script)
+const STATS = {
+  ayer_usd: 440.9657, ayer_bin: 628.101, ayer_eur: 510.4884,
+  hoy_usd:  443.2587,  hoy_bin:  null,  hoy_eur:  510.3415,
+  pct_dia:  0.0051999509258882255,   pct_yr:   0.4708078981746412,   pct_7d:   0.0767366610762421,
+  est_man:  477.2729,   est_fm:   1677.3677,   prom_mes: 438.3675,
+  usd_31dic:301.3709, usd_12m:  66.2542,  dev_12m:  5.690273220414706,
+  bin_7d:   0.023405773569972987,    bin_man:  null,  bin_fm:   null,
+  dif_bin:  null,   ratio_bin:null,
+  dif_eur:  0.15134006394008742,
+  inf_yr:   0.519368782941243,    inf_mes:  0.1461068704023448,  inf_12m:  6.179395124796955,
+};
+
+// ═══════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════
+function fmt(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return parseFloat(n).toLocaleString('es-VE', {minimumFractionDigits:4, maximumFractionDigits:4});
+}
+function fmtPct(n) {
+  if (n === null || n === undefined) return '—';
+  const v = parseFloat(n) * (Math.abs(parseFloat(n)) < 1 ? 100 : 1);
+  return (v >= 0 ? '+' : '') + v.toFixed(4) + '%';
+}
+function fmtPctRaw(n) {
+  return (n >= 0 ? '+' : '') + parseFloat(n).toFixed(4) + '%';
+}
+function dateStr(dd, mm, yyyy) {
+  return `${String(yyyy).padStart(4,'0')}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
+}
+function todayVE() {
+  // Venezuela = UTC-4 fijo, sin DST
+  const now  = new Date();
+  const utcH = now.getUTCHours();
+  const utcD = now.getUTCDate();
+  const utcM = now.getUTCMonth();
+  const utcY = now.getUTCFullYear();
+  let result;
+  if (utcH < 4) {
+    const prev = new Date(Date.UTC(utcY, utcM, utcD) - 86400000);
+    result = dateStr(prev.getUTCDate(), prev.getUTCMonth()+1, prev.getUTCFullYear());
+  } else {
+    result = dateStr(utcD, utcM+1, utcY);
+  }
+  console.log('[todayVE] UTC:', utcY+'-'+(utcM+1)+'-'+utcD+' '+utcH+'h => VE:', result);
+  return result;
+}
+function parseDateStr(s) {
+  const [y,m,d] = s.split('-');
+  return {y:+y, m:+m, d:+d};
+}
+function fmtDisplay(s) {
+  const {y,m,d} = parseDateStr(s);
+  return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
+}
+function isWeekend(s) {
+  const dt = new Date(s + 'T12:00:00');
+  return dt.getDay() === 0 || dt.getDay() === 6;
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+function setStatus(type, msg) {
+  document.getElementById('sdot').className = 'sdot ' + type;
+  document.getElementById('status-txt').textContent = msg;
+}
+
+// ═══════════════════════════════════════════
+// FECHA VALOR
+// ═══════════════════════════════════════════
+function initFechaValor() {
+  const today = todayVE();
+  const {y,m,d} = parseDateStr(today);
+  document.getElementById('fv-dd').value = String(d).padStart(2,'0');
+  document.getElementById('fv-mm').value = String(m).padStart(2,'0');
+  document.getElementById('fv-yy').value = String(y);
+  viewingDate = today;
+}
+
+function getEffectiveDate(targetDate) {
+  const lastDate = allData[allData.length - 1].date;
+  if (!targetDate || targetDate < '2020-01-01') return lastDate;
+  if (allData.find(d => d.date === targetDate)) return targetDate;
+  const anterior = allData.slice().reverse().find(d => d.date <= targetDate && d.usd > 0);
+  if (anterior) return anterior.date;
+  return lastDate;
+}
+
+function consultarFechaValor() {
+  const val = getFechaValorInput();
+  if (!val) {
+    showToast('Ingresa una fecha valida (DD MM AAAA)');
+    return;
+  }
+  const effective = getEffectiveDate(val);
+  if (effective !== val) {
+    showToast('Sin datos para ' + fmtDisplay(val) + ' - mostrando ' + fmtDisplay(effective));
+  } else {
+    showToast('Consultando ' + fmtDisplay(val));
+  }
+  viewingDate = effective;
+  updateUI(effective);
+}
+
+// ═══════════════════════════════════════════
+// UPDATE UI
+// ═══════════════════════════════════════════
+function updateUI(targetDate) {
+  const requestedDate = targetDate || todayVE();
+  const date = getEffectiveDate(requestedDate);
+  
+  // El campo de fecha NO se toca aqui — initFechaValor y consultarFechaValor lo manejan
+
+  let entry = allData.find(d => d.date === date);
+  if (!entry) entry = allData[allData.length - 1];
+  
+  const idx = allData.indexOf(entry);
+  const prevEntry = allData.slice(0, idx).reverse().find(d => d.usd > 0);
+  
+  // Compute live stats
+  const pctUSD = prevEntry ? (entry.usd - prevEntry.usd) / prevEntry.usd * 100 : 0;
+  const pctEUR = (prevEntry && prevEntry.eur && entry.eur) ? (entry.eur - prevEntry.eur) / prevEntry.eur * 100 : 0;
+  const pctBIN = (prevEntry && prevEntry.bin && entry.bin) ? (entry.bin - prevEntry.bin) / prevEntry.bin * 100 : 0;
+
+  const yearStart = allData.find(d => d.date >= date.slice(0,4) + '-01-01' && d.usd > 0);
+  const ytd = yearStart ? (entry.usd - yearStart.usd) / yearStart.usd * 100 : 0;
+  const nextEntry = allData.slice(idx+1).find(d => !isWeekend(d.date));
+  const projUSD = nextEntry ? nextEntry.usd : entry.usd;
+
+  const isToday = date === todayVE();
+
+  // ── Rate cards ────────────────────────────
+  document.getElementById('usd-rate').textContent = fmt(entry.usd);
+  document.getElementById('eur-rate').textContent = entry.eur ? fmt(entry.eur) : '—';
+  document.getElementById('bin-rate').textContent = entry.bin ? fmt(entry.bin) : '—';
+
+  const setBadge = (id, text, cls) => {
+    const el = document.getElementById(id);
+    el.textContent = text; el.className = 'badge ' + (cls||'');
+  };
+
+  setBadge('usd-b-dia', `${pctUSD>=0?'↑':'↓'} ${Math.abs(pctUSD).toFixed(2)}%`, pctUSD>0?'up':pctUSD<0?'dn':'');
+  setBadge('usd-b-ytd', `YTD ${ytd>=0?'+':''}${ytd.toFixed(1)}%`, ytd>0?'up':'dn');
+  setBadge('usd-b-man', `→ Bs.${fmt(projUSD)}`, '');
+  setBadge('eur-b-dia', `${pctEUR>=0?'↑':'↓'} ${Math.abs(pctEUR).toFixed(2)}%`, pctEUR>0?'up':pctEUR<0?'dn':'');
+  setBadge('eur-b-rel', entry.eur ? `USD/EUR ${(entry.eur/entry.usd).toFixed(4)}` : '—', '');
+  setBadge('bin-b-dia', `${pctBIN>=0?'↑':'↓'} ${Math.abs(pctBIN).toFixed(2)}%`, pctBIN>0?'up':pctBIN<0?'dn':'');
+  setBadge('bin-b-vs', entry.bin ? `${((entry.usd/entry.bin)*100).toFixed(2)}% de Bin.` : '—', '');
+
+  // ── Stats panel (from STATS object when showing today, live calc otherwise) ──
+  const S = STATS;
+  const useLive = !isToday;
+  const ayerEntry = prevEntry || {};
+
+  document.getElementById('s-ayer-usd').textContent = 'Bs. ' + fmt(useLive ? (ayerEntry.usd||0) : S.ayer_usd);
+  document.getElementById('s-hoy-usd').textContent  = 'Bs. ' + fmt(entry.usd);
+  document.getElementById('s-pct-dia').textContent  = fmtPctRaw(pctUSD);
+  document.getElementById('s-pct-yr').textContent   = fmtPctRaw(ytd);
+
+  // Prom % 7 días
+  const last7 = allData.slice(Math.max(0,idx-6), idx+1).filter(d=>d.pct);
+  const avg7 = last7.length ? last7.reduce((a,b)=>a+b.pct,0)/last7.length : 0;
+  document.getElementById('s-pct-7d').textContent = fmtPctRaw(avg7);
+  document.getElementById('s-est-man').textContent = isToday ? (S.est_man ? 'Bs. '+fmt(S.est_man) : '—') : 'Bs. '+fmt(projUSD);
+  document.getElementById('s-est-fm').textContent  = isToday ? (S.est_fm  ? 'Bs. '+fmt(S.est_fm)  : '—') : '—';
+  
+  const mes = date.slice(0,7);
+  const delMes = allData.filter(d => d.date.startsWith(mes) && d.usd > 0);
+  const avgMes = delMes.length ? delMes.reduce((a,b)=>a+b.usd,0)/delMes.length : entry.usd;
+  document.getElementById('s-prom-mes').textContent = 'Bs. ' + fmt(avgMes);
+  document.getElementById('s-31dic').textContent  = 'Bs. ' + fmt(S.usd_31dic);
+  document.getElementById('s-12m-usd').textContent = 'Bs. ' + fmt(S.usd_12m);
+  document.getElementById('s-dev-12m').textContent = S.dev_12m ? (S.dev_12m > 1 ? '+'+S.dev_12m.toFixed(2) : '+'+(S.dev_12m*100).toFixed(2)) + '%' : '—';
+
+  document.getElementById('s-ayer-bin').textContent = 'Bs. ' + fmt(useLive ? (ayerEntry.bin||0) : S.ayer_bin);
+  document.getElementById('s-hoy-bin').textContent  = 'Bs. ' + fmt(entry.bin);
+  document.getElementById('s-ratio-bin').textContent = entry.bin ? ((entry.usd/entry.bin)*100).toFixed(4)+'%' : '—';
+  document.getElementById('s-dif-bin').textContent  = entry.bin ? ((entry.bin-entry.usd)/entry.usd*100).toFixed(4)+'%' : '—';
+
+  const bin7 = allData.slice(Math.max(0,idx-6),idx+1).filter(d=>d.bin);
+  const binPcts = [];
+  for(let i=1;i<bin7.length;i++) binPcts.push((bin7[i].bin-bin7[i-1].bin)/bin7[i-1].bin*100);
+  const avgBin7 = binPcts.length ? binPcts.reduce((a,b)=>a+b,0)/binPcts.length : 0;
+  document.getElementById('s-bin-7d').textContent = fmtPctRaw(avgBin7);
+  document.getElementById('s-bin-man').textContent = isToday ? (S.bin_man ? 'Bs. '+fmt(S.bin_man) : '—') : (entry.bin ? 'Bs. '+fmt(entry.bin*(1+avgBin7/100)) : '—');
+  document.getElementById('s-bin-fm').textContent  = isToday ? (S.bin_fm  ? 'Bs. '+fmt(S.bin_fm)  : '—') : '—';
+
+  document.getElementById('s-ayer-eur').textContent = 'Bs. ' + fmt(useLive ? (ayerEntry.eur||0) : S.ayer_eur);
+  document.getElementById('s-hoy-eur').textContent  = 'Bs. ' + fmt(entry.eur);
+  document.getElementById('s-dif-eur').textContent  = (entry.eur && entry.usd) ? ((entry.eur-entry.usd)/entry.usd*100).toFixed(4)+'%' : '—';
+
+  document.getElementById('s-inf-yr').textContent  = S.inf_yr  ? (S.inf_yr*100).toFixed(4)+'%'  : '—';
+  document.getElementById('s-inf-mes').textContent = S.inf_mes ? (S.inf_mes*100).toFixed(4)+'%' : '—';
+  document.getElementById('s-inf-12m').textContent = S.inf_12m ? (S.inf_12m*100).toFixed(2)+'%' : '—';
+
+  // ── Header hint ──
+  const entryIsToday = entry.date === requestedDate;
+  document.getElementById('fv-hint').textContent = entryIsToday
+    ? `Datos actualizados · ${fmtDisplay(entry.date)}`
+    : `Último dato disponible: ${fmtDisplay(entry.date)}`;
+
+  // ── Status ──
+  setStatus('ok', isToday
+    ? `Datos actualizados · Fecha Valor: ${fmtDisplay(entry.date)} · USD: Bs.${fmt(entry.usd)}`
+    : `Histórico · ${fmtDisplay(entry.date)} · USD: Bs.${fmt(entry.usd)}`);
+
+  // ── Chart ──
+  renderChart();
+  
+  // ── Table ──
+  renderTable();
+
+  // ── WhatsApp ──
+  renderWA(entry, pctUSD, date);
+}
+
+// ═══════════════════════════════════════════
+// CHART
+// ═══════════════════════════════════════════
+function setPeriod(days) {
+  currentPeriod = days;
+  document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderChart();
+}
+
+function toggleSeries(s) {
+  if (s==='usd') showUSD=!showUSD;
+  if (s==='eur') showEUR=!showEUR;
+  if (s==='bin') showBIN=!showBIN;
+  document.getElementById('t-'+s).classList.toggle('on');
+  renderChart();
+}
+
+function renderChart() {
+  const slice = currentPeriod >= 9999 ? allData : allData.slice(-currentPeriod);
+  const labels = slice.map(d => { const [,mm,dd] = d.date.split('-'); return `${parseInt(dd)}/${parseInt(mm)}`; });
+
+  const datasets = [];
+  if (showUSD) datasets.push({
+    label:'USD BCV', data:slice.map(d=>d.usd),
+    borderColor:'#f5c842', backgroundColor:'rgba(245,200,66,0.05)',
+    borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:true, tension:0.3
+  });
+  if (showEUR) datasets.push({
+    label:'EUR BCV', data:slice.map(d=>d.eur),
+    borderColor:'#a78bfa', backgroundColor:'rgba(167,139,250,0.03)',
+    borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:false, tension:0.3
+  });
+  if (showBIN) datasets.push({
+    label:'Binance USDT', data:slice.map(d=>d.bin),
+    borderColor:'#f97316', backgroundColor:'rgba(249,115,22,0.03)',
+    borderWidth:2, pointRadius:0, pointHoverRadius:4, fill:false, tension:0.3
+  });
+
+  if (currentChart) currentChart.destroy();
+  currentChart = new Chart(document.getElementById('mainChart').getContext('2d'), {
+    type:'line',
+    data:{ labels, datasets },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend:{ labels:{ color:'#94a3b8', font:{family:'DM Mono',size:11}, usePointStyle:true } },
+        tooltip:{
+          backgroundColor:'#141b2d', borderColor:'#1e2d47', borderWidth:1,
+          titleColor:'#e2e8f0', bodyColor:'#94a3b8',
+          callbacks:{ label: c => `  ${c.dataset.label}: Bs. ${fmt(c.raw)}` }
+        }
+      },
+      scales:{
+        x:{ grid:{color:'rgba(30,45,71,0.4)'}, ticks:{color:'#475569',font:{family:'DM Mono',size:10},maxTicksLimit:10} },
+        y:{ grid:{color:'rgba(30,45,71,0.4)'}, ticks:{color:'#475569',font:{family:'DM Mono',size:10},callback:v=>'Bs.'+fmt(v)} }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════
+// TABLE
+// ═══════════════════════════════════════════
+function renderTable() {
+  const rows = allData.slice(-30).reverse();
+  const tbody = document.getElementById('tbl-body');
+  tbody.innerHTML = rows.map(r => {
+    const we = isWeekend(r.date);
+    const pctCls = r.pct > 0 ? 'up' : r.pct < 0 ? 'dn' : '';
+    const difPct = r.bin ? ((r.bin - r.usd) / r.usd * 100).toFixed(2) + '%' : '—';
+    return `<tr class="${we?'weekend':''}">
+      <td>${fmtDisplay(r.date)}${we?' <span style="opacity:0.5;font-size:10px">(F/S)</span>':''}</td>
+      <td class="usd-val">${fmt(r.usd)}</td>
+      <td class="${pctCls}">${r.pct ? fmtPctRaw(r.pct) : '—'}</td>
+      <td class="eur-val">${r.eur ? fmt(r.eur) : '—'}</td>
+      <td class="bin-val">${r.bin ? fmt(r.bin) : '—'}</td>
+      <td>${difPct}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════
+// WHATSAPP
+// ═══════════════════════════════════════════
+function renderWA(entry, pct, dateStr) {
+  const msg = `🏦 *Contared Servicios Financieros*
+📅 Fecha Valor: ${fmtDisplay(dateStr)}
+
+💵 *USD BCV:* Bs. ${fmt(entry.usd)}
+💶 *EUR BCV:* Bs. ${entry.eur ? fmt(entry.eur) : 'N/D'}
+🟠 *Binance USDT:* Bs. ${entry.bin ? fmt(entry.bin) : 'N/D'}
+
+📊 Variación USD: ${pct>=0?'↑':'↓'} ${Math.abs(pct).toFixed(2)}%
+
+_Fuente: Banco Central de Venezuela_`;
+  document.getElementById('wa-msg').textContent = msg;
+}
+
+function copyWA() {
+  const text = document.getElementById('wa-msg').textContent;
+  navigator.clipboard.writeText(text).then(() => showToast('✓ Copiado al portapapeles'));
+}
+
+// ═══════════════════════════════════════════
+// MANUAL ENTRY
+// ═══════════════════════════════════════════
+function saveManual() {
+  const usd = parseFloat(document.getElementById('m-usd').value);
+  const eur = parseFloat(document.getElementById('m-eur').value) || null;
+  const bin = parseFloat(document.getElementById('m-bin').value) || null;
+  const date = getFechaValorInput() || todayVE();
+
+  if (!usd) { showToast('⚠ Ingresa al menos el USD'); return; }
+
+  const prev = allData.slice().reverse().find(d => d.date < date && d.usd > 0);
+  const pct = prev ? (usd - prev.usd) / prev.usd * 100 : 0;
+  const entry = { date, usd, eur, bin, pct, manual: true };
+
+  const ei = allData.findIndex(d => d.date === date);
+  if (ei >= 0) allData[ei] = entry;
+  else {
+    const ii = allData.findIndex(d => d.date > date);
+    if (ii === -1) allData.push(entry);
+    else allData.splice(ii, 0, entry);
+  }
+
+  viewingDate = date;
+  updateUI(date);
+  showToast(`✓ Tasa del ${fmtDisplay(date)} guardada`);
+  document.getElementById('m-usd').value = '';
+  document.getElementById('m-eur').value = '';
+  document.getElementById('m-bin').value = '';
+}
+
+// ═══════════════════════════════════════════
+// ENTER KEY on fecha valor inputs
+// ═══════════════════════════════════════════
+// Tecla Tab avanza entre campos de fecha, Enter solo en el ultimo campo (year)
+document.getElementById('fv-yy').addEventListener('keydown', e => {
+  if (e.key === 'Enter') consultarFechaValor();
+});
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+initFechaValor();
+updateUI();
+</script>
+</body>
+</html>
